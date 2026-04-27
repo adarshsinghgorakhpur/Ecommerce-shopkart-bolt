@@ -69,6 +69,7 @@ export default function CheckoutPage() {
     pincode: '',
     is_default: false,
   });
+  const [addressError, setAddressError] = useState('');
 
   // Get user ID from auth (using supabase for now)
   const [userId, setUserId] = useState('');
@@ -107,6 +108,19 @@ export default function CheckoutPage() {
 
   const handleAddAddress = async () => {
     if (!userId) return;
+    if (
+      !addressForm.full_name.trim() ||
+      !addressForm.phone.trim() ||
+      !addressForm.address_line1.trim() ||
+      !addressForm.city.trim() ||
+      !addressForm.state.trim() ||
+      !addressForm.pincode.trim()
+    ) {
+      setAddressError('Please fill in all required address fields.');
+      return;
+    }
+
+    setAddressError('');
     try {
       const result = await addAddressMutation({
         user_id: userId,
@@ -126,7 +140,7 @@ export default function CheckoutPage() {
         is_default: false,
       });
     } catch {
-      // Error handled silently
+      setAddressError('Unable to save address. Please try again.');
     }
   };
 
@@ -383,6 +397,11 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
+                    {addressError && (
+                      <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                        {addressError}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <Button
                         onClick={handleAddAddress}

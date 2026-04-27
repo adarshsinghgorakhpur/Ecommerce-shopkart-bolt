@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useState, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -17,34 +17,54 @@ interface ProductCardProps {
   viewMode?: 'grid' | 'list';
 }
 
-export default function ProductCard({ product, viewMode = 'grid' }: ProductCardProps) {
+function ProductCard({ product, viewMode = 'grid' }: ProductCardProps) {
   const dispatch = useAppDispatch();
   const [isWishlisted, setIsWishlisted] = useState(false);
 
-  const primaryImage = product.images?.find((img) => img.is_primary) ?? product.images?.[0];
-  const imageUrl = primaryImage?.url ?? '/placeholder.png';
-  const imageAlt = primaryImage?.alt_text ?? product.name;
+  const primaryImage = useMemo(
+    () => product.images?.find((img) => img.is_primary) ?? product.images?.[0],
+    [product.images]
+  );
 
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dispatch(addToCart({ product }));
-  };
+  const imageUrl = useMemo(
+    () => primaryImage?.url ?? '/placeholder.png',
+    [primaryImage?.url]
+  );
 
-  const handleWishlist = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsWishlisted((prev) => !prev);
-  };
+  const imageAlt = useMemo(
+    () => primaryImage?.alt_text ?? product.name,
+    [primaryImage?.alt_text, product.name]
+  );
 
-  const handleCompare = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dispatch(addToCompare(product));
-  };
+  const handleAddToCart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch(addToCart({ product }));
+    },
+    [dispatch, product]
+  );
 
-  const isLowStock = product.stock > 0 && product.stock <= 5;
-  const isOutOfStock = product.stock === 0;
+  const handleWishlist = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsWishlisted((prev) => !prev);
+    },
+    []
+  );
+
+  const handleCompare = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch(addToCompare(product));
+    },
+    [dispatch, product]
+  );
+
+  const isLowStock = useMemo(() => product.stock > 0 && product.stock <= 5, [product.stock]);
+  const isOutOfStock = useMemo(() => product.stock === 0, [product.stock]);
 
   if (viewMode === 'list') {
     return (
@@ -60,6 +80,8 @@ export default function ProductCard({ product, viewMode = 'grid' }: ProductCardP
               fill
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               sizes="128px"
+              placeholder="blur"
+              blurDataURL="/placeholder.png"
             />
             {product.discount_percent > 0 && (
               <Badge className="absolute left-1 top-1 bg-red-500 text-white text-[10px]">
@@ -158,6 +180,8 @@ export default function ProductCard({ product, viewMode = 'grid' }: ProductCardP
             fill
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            placeholder="blur"
+            blurDataURL="/placeholder.png"
           />
 
           {/* Badges */}
@@ -248,4 +272,6 @@ export default function ProductCard({ product, viewMode = 'grid' }: ProductCardP
     </motion.div>
   );
 }
+
+export default memo(ProductCard);
 

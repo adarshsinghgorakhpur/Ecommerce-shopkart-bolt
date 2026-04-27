@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/redux/hooks';
 import { selectCartCount } from '@/redux/slices/cartSlice';
-import { toggleDarkMode } from '@/redux/slices/uiSlice';
 import { addToHistory, clearHistory } from '@/redux/slices/searchSlice';
 import { useGetProductsQuery } from '@/redux/api/apiSlice';
 import { NAV_LINKS } from '@/constants';
@@ -26,8 +25,6 @@ import {
   Heart,
   User,
   Menu,
-  Sun,
-  Moon,
   GitCompare,
   MapPin,
   Package,
@@ -41,7 +38,6 @@ export default function Header() {
   const router = useRouter();
 
   const cartCount = useAppSelector(selectCartCount);
-  const darkMode = useAppSelector((state) => state.ui.darkMode);
   const searchHistory = useAppSelector((state) => state.search.history);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,10 +115,6 @@ export default function Header() {
 
   const handleClearHistory = () => {
     dispatch(clearHistory());
-  };
-
-  const handleDarkModeToggle = () => {
-    dispatch(toggleDarkMode());
   };
 
   const suggestions = searchResults?.slice(0, 6) ?? [];
@@ -311,20 +303,6 @@ export default function Header() {
 
         {/* Right Actions */}
         <div className="flex items-center gap-1">
-          {/* Dark Mode Toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleDarkModeToggle}
-            aria-label="Toggle dark mode"
-          >
-            {darkMode ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
-          </Button>
-
           {/* Wishlist */}
           <Button variant="ghost" size="icon" asChild>
             <Link href="/wishlist">

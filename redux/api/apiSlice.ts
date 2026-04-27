@@ -5,26 +5,76 @@ import type { Product, Category, Banner, Review, Coupon, Order, Address, OrderIt
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({ baseUrl: '/' }),
+  keepUnusedDataFor: 60,
+  refetchOnMountOrArgChange: false,
+  refetchOnFocus: false,
   tagTypes: ['Products', 'Categories', 'Banners', 'Reviews', 'Orders', 'Wishlist', 'Addresses', 'Coupons'],
   endpoints: (builder) => ({
-    getProducts: builder.query<Product[], { category?: string; search?: string; trending?: boolean; flashSale?: boolean; sortBy?: string; limit?: number }>({
+    getProducts: builder.query<
+      Product[],
+      { category?: string; search?: string; trending?: boolean; flashSale?: boolean; sortBy?: string; limit?: number; brand?: string[] | string; minPrice?: number; maxPrice?: number; minRating?: number }
+    >({
       queryFn: async (params) => {
-        let q = supabase.from('products').select('*, images:product_images(*), variants:product_variants(*), category:categories(*)').eq('is_active', true);
-        if (params.category) { const { data: cat } = await supabase.from('categories').select('id').eq('slug', params.category).maybeSingle(); if (cat) q = q.eq('category_id', cat.id); }
+        let q = supabase
+          .from('products')
+          .select('*, images:product_images(*), variants:product_variants(*), category:categories(*)')
+          .eq('is_active', true);
+
+        if (params.category) {
+          const { data: cat } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('slug', params.category)
+            .maybeSingle();
+          if (cat) q = q.eq('category_id', cat.id);
+        }
+
         if (params.trending) q = q.eq('is_trending', true);
         if (params.flashSale) q = q.eq('is_flash_sale', true);
+        if (params.brand) {
+          const brands = Array.isArray(params.brand) ? params.brand : [params.brand];
+          q = q.in('brand', brands);
+        }
+        if (typeof params.minPrice === 'number') q = q.gte('selling_price', params.minPrice);
+        if (typeof params.maxPrice === 'number') q = q.lte('selling_price', params.maxPrice);
+        if (typeof params.minRating === 'number') q = q.gte('rating', params.minRating);
         if (params.search) q = q.or(`name.ilike.%${params.search}%,brand.ilike.%${params.search}%,description.ilike.%${params.search}%`);
+
         if (params.sortBy === 'price_low') q = q.order('selling_price', { ascending: true });
         else if (params.sortBy === 'price_high') q = q.order('selling_price', { ascending: false });
         else if (params.sortBy === 'rating') q = q.order('rating', { ascending: false });
         else if (params.sortBy === 'newest') q = q.order('created_at', { ascending: false });
         else q = q.order('review_count', { ascending: false });
+
         if (params.limit) q = q.limit(params.limit);
         const { data, error } = await q;
         if (error) return { error: { status: 500, data: error.message } };
         return { data: data as Product[] };
       },
       providesTags: ['Products'],
+    }),
+    getWishlistProducts: builder.query<Product[], string>({
+      queryFn: async (userId) => {
+        if (!userId) return { data: [] };
+        const { data: wishlist, error: wishlistError } = await supabase
+          .from('wishlist')
+          .select('product_id')
+          .eq('user_id', userId);
+
+        if (wishlistError) return { error: { status: 500, data: wishlistError.message } };
+
+        const ids = wishlist?.map((item) => item.product_id) ?? [];
+        if (ids.length === 0) return { data: [] };
+
+        const { data, error } = await supabase
+          .from('products')
+          .select('*, images:product_images(*), variants:product_variants(*), category:categories(*)')
+          .in('id', ids);
+
+        if (error) return { error: { status: 500, data: error.message } };
+        return { data: data as Product[] };
+      },
+      providesTags: ['Wishlist'],
     }),
     getProduct: builder.query<Product, string>({
       queryFn: async (slug) => {
@@ -74,4 +124,16 @@ export const api = createApi({
   }),
 });
 
-export const { useGetProductsQuery, useGetProductQuery, useGetCategoriesQuery, useGetBannersQuery, useGetReviewsQuery, useGetCouponQuery, useGetOrdersQuery, useCreateOrderMutation, useGetAddressesQuery, useAddAddressMutation } = api;
+export const {
+  useGetProductsQuery,
+  useGetProductQuery,
+  useGetCategoriesQuery,
+  useGetBannersQuery,
+  useGetReviewsQuery,
+  useGetCouponQuery,
+  useGetOrdersQuery,
+  useCreateOrderMutation,
+  useGetAddressesQuery,
+  useAddAddressMutation,
+  useGetWishlistProductsQuery,
+} = api;

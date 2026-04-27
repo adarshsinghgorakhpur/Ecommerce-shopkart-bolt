@@ -56,36 +56,20 @@ function ProductsContent() {
     category: categoryParam,
     search: searchParam,
     sortBy,
+    brand: selectedBrands.length > 0 ? selectedBrands : undefined,
+    minPrice: priceRange[0] > 0 ? priceRange[0] : undefined,
+    maxPrice: priceRange[1] < 999999 ? priceRange[1] : undefined,
+    minRating: selectedRating > 0 ? selectedRating : undefined,
   });
 
   const { data: categories } = useGetCategoriesQuery();
 
-  // Client-side filtering
-  const filteredProducts = useMemo(() => {
-    if (!products) return [];
-    let filtered = [...products];
-
-    if (selectedBrands.length > 0) {
-      filtered = filtered.filter((p) => selectedBrands.includes(p.brand));
-    }
-
-    if (selectedRating > 0) {
-      filtered = filtered.filter((p) => p.rating >= selectedRating);
-    }
-
-    filtered = filtered.filter(
-      (p) => p.selling_price >= priceRange[0] && p.selling_price <= priceRange[1]
-    );
-
-    return filtered;
-  }, [products, selectedBrands, selectedRating, priceRange]);
-
-  // Pagination
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const totalProducts = products?.length ?? 0;
+  const totalPages = Math.ceil(totalProducts / ITEMS_PER_PAGE);
   const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredProducts.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
+    return products?.slice(start, start + ITEMS_PER_PAGE) ?? [];
+  }, [products, currentPage]);
 
   // Handlers
   const handleCategoryChange = useCallback(
@@ -230,7 +214,7 @@ function ProductsContent() {
             : 'All Products'}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} found
+          {totalProducts} product{totalProducts !== 1 ? 's' : ''} found
         </p>
       </div>
 

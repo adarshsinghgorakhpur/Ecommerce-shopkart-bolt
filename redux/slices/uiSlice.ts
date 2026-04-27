@@ -1,7 +1,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 interface UIState { darkMode: boolean; mobileMenuOpen: boolean; searchOpen: boolean; cartDrawerOpen: boolean; }
-const loadDarkMode = (): boolean => { if (typeof window === 'undefined') return false; return localStorage.getItem('darkMode') === 'true'; };
-const initialState: UIState = { darkMode: loadDarkMode(), mobileMenuOpen: false, searchOpen: false, cartDrawerOpen: false };
+const initialState: UIState = { darkMode: true, mobileMenuOpen: false, searchOpen: false, cartDrawerOpen: false };
 const uiSlice = createSlice({
   name: 'ui', initialState,
   reducers: {

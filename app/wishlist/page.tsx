@@ -3,54 +3,39 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/services/supabase';
-import { useGetProductsQuery } from '@/redux/api/apiSlice';
+import { useGetWishlistProductsQuery } from '@/redux/api/apiSlice';
 import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Heart } from 'lucide-react';
-import type { Product } from '@/types';
 
 export default function WishlistPage() {
-  const [wishlistIds, setWishlistIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState('');
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const fetchWishlist = async () => {
+    const fetchUser = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) {
-          setLoading(false);
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from('wishlist')
-          .select('product_id')
-          .eq('user_id', session.user.id);
-
-        if (error) throw error;
-        if (data) {
-          setWishlistIds(data.map((item) => item.product_id));
+        if (session?.user) {
+          setUserId(session.user.id);
         }
       } catch (error) {
-        console.error('Error fetching wishlist:', error);
+        console.error('Error initializing wishlist:', error);
       } finally {
-        setLoading(false);
+        setInitialized(true);
       }
     };
 
-    fetchWishlist();
+    fetchUser();
   }, []);
 
-  const { data: products, isLoading: productsLoading } = useGetProductsQuery(
-    { limit: 100 },
-    { skip: wishlistIds.length === 0 }
-  );
+  const { data: wishlistProducts, isLoading: wishlistLoading } = useGetWishlistProductsQuery(userId, {
+    skip: !userId,
+  });
 
-  const wishlistProducts: Product[] = (products || []).filter((p) =>
-    wishlistIds.includes(p.id)
-  );
+  const loading = wishlistLoading || !initialized;
 
-  if (loading || productsLoading) {
+  if (loading) {
     return (
       <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
@@ -61,7 +46,31 @@ export default function WishlistPage() {
     );
   }
 
-  if (wishlistProducts.length === 0) {
+  if (!userId) {
+    return (
+      <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 rounded-full bg-muted p-6">
+            <Heart className="h-12 w-12 text-muted-foreground" />
+          </div>
+          <h2 className="text-2xl font-bold">Login to view your wishlist</h2>
+          <p className="mt-2 text-muted-foreground">
+            Sign in to keep your wishlist synced across devices.
+          </p>
+          <Button asChild className="mt-6" size="lg">
+            <Link href="/auth/login">
+              <Heart className="mr-2 h-5 w-5" />
+              Login
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const products = wishlistProducts || [];
+
+  if (products.length === 0) {
     return (
       <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
@@ -88,12 +97,12 @@ export default function WishlistPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">My Wishlist</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {wishlistProducts.length} item{wishlistProducts.length !== 1 ? 's' : ''} saved
+          {products.length} item{products.length !== 1 ? 's' : ''} saved
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {wishlistProducts.map((product) => (
+        {products.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}
       </div>

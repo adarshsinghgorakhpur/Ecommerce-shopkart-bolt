@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -116,9 +116,11 @@ export default function ProductDetailPage() {
   }, [product, dispatch]);
 
   // Track when product loads
-  useState(() => {
-    if (product) handleTrackRecentlyViewed();
-  });
+  useEffect(() => {
+    if (product) {
+      handleTrackRecentlyViewed();
+    }
+  }, [product, handleTrackRecentlyViewed]);
 
   // Variant selection
   const handleVariantSelect = useCallback(
@@ -300,6 +302,8 @@ export default function ProductDetailPage() {
                   className={isZooming ? 'opacity-0' : 'object-cover'}
                   sizes="(max-width: 1024px) 100vw, 50vw"
                   priority
+                  placeholder="blur"
+                  blurDataURL="/placeholder.png"
                 />
               )}
             </div>
@@ -339,6 +343,8 @@ export default function ProductDetailPage() {
                     fill
                     className="object-cover"
                     sizes="64px"
+                    placeholder="blur"
+                    blurDataURL="/placeholder.png"
                   />
                 </button>
               ))}

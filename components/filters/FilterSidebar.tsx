@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Star, X } from 'lucide-react';
 import { Category, Product } from '@/types';
 import { PRICE_RANGES } from '@/constants';
@@ -24,7 +24,7 @@ interface FilterSidebarProps {
   onClear: () => void;
 }
 
-export default function FilterSidebar({
+function FilterSidebar({
   categories,
   products,
   selectedCategory,
@@ -89,10 +89,10 @@ export default function FilterSidebar({
           {categories.map((category) => (
             <button
               key={category.id}
-              onClick={() => onCategoryChange(category.id)}
+              onClick={() => onCategoryChange(category.slug)}
               className={cn(
                 'rounded-md px-3 py-1.5 text-left text-sm transition-colors',
-                selectedCategory === category.id
+                selectedCategory === category.slug
                   ? 'bg-primary text-primary-foreground'
                   : 'hover:bg-accent hover:text-accent-foreground'
               )}
@@ -211,3 +211,5 @@ export default function FilterSidebar({
     </aside>
   );
 }
+
+export default memo(FilterSidebar);
