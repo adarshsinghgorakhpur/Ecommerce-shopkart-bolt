@@ -1,44 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, CreditCard, Package, Check, Plus, Truck } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '@/redux/hooks';
-import {
-  selectCartItems,
-  selectCartSubtotal,
-  selectCartDiscount,
-  selectDeliveryCharge,
-  selectCartTotal,
-  selectCouponCode,
-  selectCouponDiscount,
-  clearCart,
-} from '@/redux/slices/cartSlice';
-import {
-  useCreateOrderMutation,
-  useGetAddressesQuery,
-  useAddAddressMutation,
-} from '@/redux/api/apiSlice';
-import { PAYMENT_METHODS, DELIVERY_ESTIMATE_DAYS } from '@/constants';
+import Link from 'next/link';
+import { Check, MapPin, CreditCard, Package, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import type { Address } from '@/types';
+import { Separator } from '@/components/ui/separator';
+import { useAppDispatch, useAppSelector } from '@/redux/hooks';
+import { selectCartItems, selectCartSubtotal, selectCartDiscount, selectDeliveryCharge, selectCartTotal, selectCouponCode, selectCouponDiscount, clearCart } from '@/redux/slices/cartSlice';
+import { useCreateOrderMutation, useGetAddressesQuery, useAddAddressMutation } from '@/redux/api/apiSlice';
+import { PAYMENT_METHODS, DELIVERY_ESTIMATE_DAYS } from '@/constants';
 
-const STEPS = [
-  { id: 1, label: 'Address', icon: MapPin },
-  { id: 2, label: 'Payment', icon: CreditCard },
-  { id: 3, label: 'Review', icon: Package },
-];
+type Step = 'address' | 'payment' | 'review';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-
   const items = useAppSelector(selectCartItems);
   const subtotal = useAppSelector(selectCartSubtotal);
   const discount = useAppSelector(selectCartDiscount);
@@ -47,652 +27,102 @@ export default function CheckoutPage() {
   const couponCode = useAppSelector(selectCouponCode);
   const couponDiscount = useAppSelector(selectCouponDiscount);
 
-  const [currentStep, setCurrentStep] = useState(1);
-  const [selectedAddressId, setSelectedAddressId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('upi');
-  const [upiId, setUpiId] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
+  const [currentStep, setCurrentStep] = useState<Step>('address');
+  const [selectedAddress, setSelectedAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cod');
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [showNewAddress, setShowNewAddress] = useState(false);
+  const [newAddress, setNewAddress] = useState({ full_name: '', phone: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '', label: 'Home' });
 
-  // Address form state
-  const [showAddressForm, setShowAddressForm] = useState(false);
-  const [addressForm, setAddressForm] = useState({
-    label: '',
-    full_name: '',
-    phone: '',
-    address_line1: '',
-    address_line2: '',
-    city: '',
-    state: '',
-    pincode: '',
-    is_default: false,
-  });
-  const [addressError, setAddressError] = useState('');
+  const { data: addresses } = useGetAddressesQuery('current');
+  const [addAddress] = useAddAddressMutation();
+  const [createOrder] = useCreateOrderMutation();
 
-  // Get user ID from auth (using supabase for now)
-  const [userId, setUserId] = useState('');
-  useEffect(() => {
-    const getUser = async () => {
-      const { supabase } = await import('@/services/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
-    };
-    getUser();
-  }, []);
+  const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
+    { id: 'address', label: 'Address', icon: <MapPin className="h-4 w-4" /> },
+    { id: 'payment', label: 'Payment', icon: <CreditCard className="h-4 w-4" /> },
+    { id: 'review', label: 'Review', icon: <Package className="h-4 w-4" /> },
+  ];
+  const stepIndex = steps.findIndex(s => s.id === currentStep);
 
-  const { data: addresses, isLoading: addressesLoading } = useGetAddressesQuery(userId, {
-    skip: !userId,
-  });
+  const handleAddAddress = async () => { await addAddress({ ...newAddress, user_id: 'current', id: '' } as any); setShowNewAddress(false); };
 
-  const [addAddressMutation, { isLoading: addingAddress }] = useAddAddressMutation();
-  const [createOrderMutation, { isLoading: creatingOrder }] = useCreateOrderMutation();
-
-  // Redirect to cart if empty
-  useEffect(() => {
-    if (items.length === 0 && !orderPlaced) {
-      if (typeof window !== 'undefined') {
-        router.push('/cart');
-      }
-    }
-  }, [items.length, orderPlaced, router]);
-
-  // Set first address as default selected
-  useEffect(() => {
-    if (addresses && addresses.length > 0 && !selectedAddressId) {
-      const defaultAddr = addresses.find((a) => a.is_default) || addresses[0];
-      setSelectedAddressId(defaultAddr.id);
-    }
-  }, [addresses, selectedAddressId]);
-
-  const handleAddAddress = async () => {
-    if (!userId) return;
-    if (
-      !addressForm.full_name.trim() ||
-      !addressForm.phone.trim() ||
-      !addressForm.address_line1.trim() ||
-      !addressForm.city.trim() ||
-      !addressForm.state.trim() ||
-      !addressForm.pincode.trim()
-    ) {
-      setAddressError('Please fill in all required address fields.');
-      return;
-    }
-
-    setAddressError('');
-    try {
-      const result = await addAddressMutation({
-        user_id: userId,
-        ...addressForm,
-      }).unwrap();
-      setSelectedAddressId(result.id);
-      setShowAddressForm(false);
-      setAddressForm({
-        label: '',
-        full_name: '',
-        phone: '',
-        address_line1: '',
-        address_line2: '',
-        city: '',
-        state: '',
-        pincode: '',
-        is_default: false,
-      });
-    } catch {
-      setAddressError('Unable to save address. Please try again.');
-    }
-  };
-
-  const handlePlaceOrder = async () => {
-    if (!userId || !selectedAddressId) return;
-
-    const orderItems = items.map((item) => ({
-      id: '',
-      order_id: '',
-      product_id: item.product.id,
-      product_name: item.product.name,
-      variant_info: item.selectedVariant
-        ? `${item.selectedVariant.variant_type}: ${item.selectedVariant.variant_value}`
-        : '',
-      quantity: item.quantity,
-      price: item.product.selling_price,
-      image_url: item.product.images?.[0]?.url || '',
+  const handlePlaceOrder = useCallback(async () => {
+    const orderItems = items.map(item => ({
+      id: '', order_id: '', product_id: item.product.id, product_name: item.product.name,
+      variant_info: item.selectedVariant ? `${item.selectedVariant.variant_type}: ${item.selectedVariant.variant_value}` : '',
+      quantity: item.quantity, price: item.product.selling_price, image_url: item.product.images?.[0]?.url || '',
     }));
+    await createOrder({ userId: 'current', addressId: selectedAddress, items: orderItems, subtotal, discount, deliveryCharge, total, paymentMethod, couponCode });
+    dispatch(clearCart());
+    setOrderPlaced(true);
+  }, [items, selectedAddress, subtotal, discount, deliveryCharge, total, paymentMethod, couponCode, createOrder, dispatch]);
 
-    try {
-      await createOrderMutation({
-        userId,
-        addressId: selectedAddressId,
-        items: orderItems,
-        subtotal,
-        discount,
-        deliveryCharge,
-        total,
-        paymentMethod,
-        couponCode,
-      }).unwrap();
+  if (items.length === 0 && !orderPlaced) { if (typeof window !== 'undefined') router.push('/cart'); return null; }
 
-      dispatch(clearCart());
-      setOrderPlaced(true);
-    } catch {
-      // Error handled silently
-    }
-  };
-
-  const canProceedToPayment = selectedAddressId !== '';
-  const canProceedToReview =
-    paymentMethod === 'cod' ||
-    (paymentMethod === 'upi' && upiId.trim() !== '') ||
-    (paymentMethod === 'card' && cardNumber.trim() !== '' && cardExpiry.trim() !== '' && cardCvv.trim() !== '');
-
-  // Order placed success state
-  if (orderPlaced) {
-    return (
-      <div className="container mx-auto px-4 py-16">
-        <div className="flex flex-col items-center justify-center text-center">
-          <div className="mb-4 rounded-full bg-green-100 p-6">
-            <Check className="h-12 w-12 text-green-600" />
-          </div>
-          <h1 className="text-2xl font-bold">Order Placed Successfully!</h1>
-          <p className="mt-2 text-muted-foreground">
-            Your order has been confirmed and will be delivered within {DELIVERY_ESTIMATE_DAYS} business days.
-          </p>
-          <Button asChild className="mt-6" size="lg">
-            <a href="/">Continue Shopping</a>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (orderPlaced) return (
+    <div className="container mx-auto px-4 py-20 text-center max-w-md">
+      <div className="mx-auto h-20 w-20 rounded-full bg-green-100 flex items-center justify-center"><Check className="h-10 w-10 text-green-600" /></div>
+      <h2 className="text-2xl font-bold mt-6">Order Placed Successfully!</h2>
+      <p className="text-muted-foreground mt-2">Your order will be delivered within {DELIVERY_ESTIMATE_DAYS} business days.</p>
+      <div className="mt-6 space-y-2"><Link href="/orders"><Button className="w-full">View Orders</Button></Link><Link href="/"><Button variant="outline" className="w-full">Continue Shopping</Button></Link></div>
+    </div>
+  );
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <h1 className="mb-6 text-2xl font-bold">Checkout</h1>
-
-      {/* Step Indicator */}
-      <div className="mb-8 flex items-center justify-center">
-        {STEPS.map((step, index) => {
-          const Icon = step.icon;
-          const isActive = currentStep === step.id;
-          const isCompleted = currentStep > step.id;
-
-          return (
-            <div key={step.id} className="flex items-center">
-              <div
-                className={`flex items-center gap-2 rounded-full px-4 py-2 transition-colors ${
-                  isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : isCompleted
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {isCompleted ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Icon className="h-4 w-4" />
-                )}
-                <span className="text-sm font-medium">{step.label}</span>
-              </div>
-              {index < STEPS.length - 1 && (
-                <div className="mx-2 h-[2px] w-8 bg-muted sm:w-16" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2">
-          {/* Step 1: Address */}
-          {currentStep === 1 && (
+    <div className="container mx-auto px-4 py-6 max-w-4xl">
+      <h1 className="text-2xl font-bold mb-6">Checkout</h1>
+      <div className="flex items-center gap-2 mb-8">{steps.map((step, i) => (<div key={step.id} className="flex items-center gap-2 flex-1"><button onClick={() => { if (i < stepIndex) setCurrentStep(step.id); }} className={`flex items-center gap-2 text-sm font-medium ${i <= stepIndex ? 'text-primary' : 'text-muted-foreground'}`}><span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs ${i < stepIndex ? 'bg-primary text-primary-foreground' : i === stepIndex ? 'border-2 border-primary text-primary' : 'border text-muted-foreground'}`}>{i < stepIndex ? <Check className="h-3.5 w-3.5" /> : step.icon}</span><span className="hidden sm:inline">{step.label}</span></button>{i < steps.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}</div>))}</div>
+      <div className="grid lg:grid-cols-[1fr_320px] gap-6">
+        <div>
+          {currentStep === 'address' && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold">Select Delivery Address</h2>
-
-              {addressesLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="h-24 animate-pulse rounded-lg bg-muted" />
-                  ))}
+              {addresses?.map(addr => (<label key={addr.id} className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${selectedAddress === addr.id ? 'border-primary bg-primary/5' : 'hover:border-muted-foreground'}`}><RadioGroup value={selectedAddress} onValueChange={setSelectedAddress}><RadioGroupItem value={addr.id} /></RadioGroup><div><p className="font-medium text-sm">{addr.full_name} <span className="text-muted-foreground font-normal text-xs ml-1">{addr.label}</span></p><p className="text-sm text-muted-foreground mt-0.5">{addr.address_line1}, {addr.city}, {addr.state} - {addr.pincode}</p><p className="text-xs text-muted-foreground mt-0.5">{addr.phone}</p></div></label>))}
+              {!showNewAddress ? <Button variant="outline" onClick={() => setShowNewAddress(true)}>+ Add New Address</Button> : (
+                <div className="rounded-lg border p-4 space-y-3"><h3 className="font-medium text-sm">New Address</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label className="text-xs">Full Name</Label><Input value={newAddress.full_name} onChange={e => setNewAddress({ ...newAddress, full_name: e.target.value })} className="h-9" /></div>
+                    <div><Label className="text-xs">Phone</Label><Input value={newAddress.phone} onChange={e => setNewAddress({ ...newAddress, phone: e.target.value })} className="h-9" /></div>
+                    <div className="col-span-2"><Label className="text-xs">Address Line 1</Label><Input value={newAddress.address_line1} onChange={e => setNewAddress({ ...newAddress, address_line1: e.target.value })} className="h-9" /></div>
+                    <div className="col-span-2"><Label className="text-xs">Address Line 2</Label><Input value={newAddress.address_line2} onChange={e => setNewAddress({ ...newAddress, address_line2: e.target.value })} className="h-9" /></div>
+                    <div><Label className="text-xs">City</Label><Input value={newAddress.city} onChange={e => setNewAddress({ ...newAddress, city: e.target.value })} className="h-9" /></div>
+                    <div><Label className="text-xs">State</Label><Input value={newAddress.state} onChange={e => setNewAddress({ ...newAddress, state: e.target.value })} className="h-9" /></div>
+                    <div><Label className="text-xs">Pincode</Label><Input value={newAddress.pincode} onChange={e => setNewAddress({ ...newAddress, pincode: e.target.value })} className="h-9" /></div>
+                  </div>
+                  <div className="flex gap-2"><Button size="sm" onClick={handleAddAddress}>Save Address</Button><Button size="sm" variant="outline" onClick={() => setShowNewAddress(false)}>Cancel</Button></div>
                 </div>
-              ) : (
-                <RadioGroup value={selectedAddressId} onValueChange={setSelectedAddressId}>
-                  {addresses?.map((address) => (
-                    <div key={address.id} className="flex items-start gap-3 rounded-lg border p-4">
-                      <RadioGroupItem value={address.id} className="mt-1" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{address.full_name}</span>
-                          {address.is_default && (
-                            <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              Default
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {address.address_line1}
-                          {address.address_line2 && `, ${address.address_line2}`}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {address.city}, {address.state} - {address.pincode}
-                        </p>
-                        <p className="text-sm text-muted-foreground">Phone: {address.phone}</p>
-                      </div>
-                    </div>
-                  ))}
-                </RadioGroup>
               )}
-
-              {/* Add New Address */}
-              {!showAddressForm ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowAddressForm(true)}
-                  className="w-full"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add New Address
-                </Button>
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">New Address</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-label">Label</Label>
-                        <Input
-                          id="addr-label"
-                          placeholder="Home, Office, etc."
-                          value={addressForm.label}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, label: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-name">Full Name</Label>
-                        <Input
-                          id="addr-name"
-                          placeholder="Full name"
-                          value={addressForm.full_name}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, full_name: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-phone">Phone</Label>
-                        <Input
-                          id="addr-phone"
-                          placeholder="Phone number"
-                          value={addressForm.phone}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, phone: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-pincode">Pincode</Label>
-                        <Input
-                          id="addr-pincode"
-                          placeholder="Pincode"
-                          value={addressForm.pincode}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, pincode: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="addr-line1">Address Line 1</Label>
-                      <Input
-                        id="addr-line1"
-                        placeholder="House no., Building, Street"
-                        value={addressForm.address_line1}
-                        onChange={(e) =>
-                          setAddressForm((prev) => ({ ...prev, address_line1: e.target.value }))
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="addr-line2">Address Line 2</Label>
-                      <Input
-                        id="addr-line2"
-                        placeholder="Area, Colony, Landmark (Optional)"
-                        value={addressForm.address_line2}
-                        onChange={(e) =>
-                          setAddressForm((prev) => ({ ...prev, address_line2: e.target.value }))
-                        }
-                      />
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-city">City</Label>
-                        <Input
-                          id="addr-city"
-                          placeholder="City"
-                          value={addressForm.city}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, city: e.target.value }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="addr-state">State</Label>
-                        <Input
-                          id="addr-state"
-                          placeholder="State"
-                          value={addressForm.state}
-                          onChange={(e) =>
-                            setAddressForm((prev) => ({ ...prev, state: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {addressError && (
-                      <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                        {addressError}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handleAddAddress}
-                        disabled={addingAddress}
-                        className="flex-1"
-                      >
-                        {addingAddress ? 'Saving...' : 'Save Address'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowAddressForm(false)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => setCurrentStep(2)}
-                  disabled={!canProceedToPayment}
-                >
-                  Continue to Payment
-                </Button>
-              </div>
+              <Button className="mt-4" disabled={!selectedAddress} onClick={() => setCurrentStep('payment')}>Continue to Payment</Button>
             </div>
           )}
-
-          {/* Step 2: Payment */}
-          {currentStep === 2 && (
+          {currentStep === 'payment' && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold">Select Payment Method</h2>
-
               <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-                {PAYMENT_METHODS.map((method) => (
-                  <div key={method.id} className="flex items-center gap-3 rounded-lg border p-4">
-                    <RadioGroupItem value={method.id} />
-                    <Label htmlFor={method.id} className="flex-1 cursor-pointer font-medium">
-                      {method.label}
-                    </Label>
-                  </div>
-                ))}
+                {PAYMENT_METHODS.map(m => <label key={m.id} className={`flex items-center gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${paymentMethod === m.id ? 'border-primary bg-primary/5' : 'hover:border-muted-foreground'}`}><RadioGroupItem value={m.id} /><span className="font-medium text-sm">{m.label}</span></label>)}
               </RadioGroup>
-
-              {/* UPI Input */}
-              {paymentMethod === 'upi' && (
-                <div className="space-y-2 rounded-lg border p-4">
-                  <Label htmlFor="upi-id">UPI ID</Label>
-                  <Input
-                    id="upi-id"
-                    placeholder="yourname@upi"
-                    value={upiId}
-                    onChange={(e) => setUpiId(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter your UPI ID (e.g., name@bank)
-                  </p>
-                </div>
-              )}
-
-              {/* Card Input */}
-              {paymentMethod === 'card' && (
-                <div className="space-y-4 rounded-lg border p-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="card-number">Card Number</Label>
-                    <Input
-                      id="card-number"
-                      placeholder="1234 5678 9012 3456"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      maxLength={19}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="card-expiry">Expiry Date</Label>
-                      <Input
-                        id="card-expiry"
-                        placeholder="MM/YY"
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
-                        maxLength={5}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="card-cvv">CVV</Label>
-                      <Input
-                        id="card-cvv"
-                        placeholder="123"
-                        value={cardCvv}
-                        onChange={(e) => setCardCvv(e.target.value)}
-                        maxLength={3}
-                        type="password"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* COD Note */}
-              {paymentMethod === 'cod' && (
-                <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                  <p className="text-sm text-yellow-800">
-                    Cash on Delivery: Pay when your order is delivered. Additional COD charges may apply.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                  Back to Address
-                </Button>
-                <Button
-                  onClick={() => setCurrentStep(3)}
-                  disabled={!canProceedToReview}
-                >
-                  Review Order
-                </Button>
-              </div>
+              {paymentMethod === 'upi' && <div><Label className="text-xs">UPI ID</Label><Input placeholder="yourname@upi" className="h-9 mt-1" /></div>}
+              {paymentMethod === 'card' && <div className="space-y-3"><div><Label className="text-xs">Card Number</Label><Input placeholder="1234 5678 9012 3456" className="h-9 mt-1" /></div><div className="grid grid-cols-2 gap-3"><div><Label className="text-xs">Expiry</Label><Input placeholder="MM/YY" className="h-9 mt-1" /></div><div><Label className="text-xs">CVV</Label><Input placeholder="123" type="password" className="h-9 mt-1" /></div></div></div>}
+              <div className="flex gap-2 mt-4"><Button variant="outline" onClick={() => setCurrentStep('address')}>Back</Button><Button onClick={() => setCurrentStep('review')}>Review Order</Button></div>
             </div>
           )}
-
-          {/* Step 3: Review */}
-          {currentStep === 3 && (
+          {currentStep === 'review' && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold">Review Your Order</h2>
-
-              {/* Delivery Address */}
-              {addresses && (
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Delivery Address</span>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => setCurrentStep(1)}>
-                        Change
-                      </Button>
-                    </div>
-                    {(() => {
-                      const addr = addresses.find((a) => a.id === selectedAddressId);
-                      if (!addr) return null;
-                      return (
-                        <div className="mt-2 text-sm text-muted-foreground">
-                          <p className="font-medium text-foreground">{addr.full_name}</p>
-                          <p>
-                            {addr.address_line1}
-                            {addr.address_line2 && `, ${addr.address_line2}`}
-                          </p>
-                          <p>
-                            {addr.city}, {addr.state} - {addr.pincode}
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Payment Method */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">Payment Method</span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setCurrentStep(2)}>
-                      Change
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label}
-                    {paymentMethod === 'upi' && upiId && ` (${upiId})`}
-                    {paymentMethod === 'card' && cardNumber && ` (****${cardNumber.slice(-4)})`}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Delivery Estimate */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <Truck className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">
-                      Estimated delivery within <span className="font-medium">{DELIVERY_ESTIMATE_DAYS} business days</span>
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Order Items */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Order Items ({items.length})</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {items.map((item) => {
-                    const imageUrl = item.product.images?.[0]?.url || '/placeholder.png';
-                    return (
-                      <div key={`${item.product.id}-${item.selectedVariant?.id || 'default'}`} className="flex gap-3">
-                        <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border">
-                          <Image
-                            src={imageUrl}
-                            alt={item.product.name}
-                            fill
-                            className="object-cover"
-                            sizes="56px"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium line-clamp-1">{item.product.name}</p>
-                          {item.selectedVariant && (
-                            <p className="text-xs text-muted-foreground">
-                              {item.selectedVariant.variant_type}: {item.selectedVariant.variant_value}
-                            </p>
-                          )}
-                          <p className="text-sm">
-                            Rs.{item.product.selling_price.toLocaleString()} x {item.quantity}
-                          </p>
-                        </div>
-                        <span className="text-sm font-medium">
-                          Rs.{(item.product.selling_price * item.quantity).toLocaleString()}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-              <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                  Back to Payment
-                </Button>
-                <Button
-                  onClick={handlePlaceOrder}
-                  disabled={creatingOrder}
-                  size="lg"
-                >
-                  {creatingOrder ? 'Placing Order...' : 'Place Order'}
-                </Button>
-              </div>
+              <h2 className="text-lg font-semibold">Order Summary</h2>
+              <div className="rounded-lg border p-4 space-y-3">{items.map(item => <div key={`${item.product.id}-${item.selectedVariant?.id}`} className="flex items-center gap-3"><div className="h-12 w-12 rounded bg-muted flex-shrink-0 overflow-hidden"><img src={item.product.images?.[0]?.url || ''} alt="" className="h-full w-full object-cover" /></div><div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{item.product.name}</p><p className="text-xs text-muted-foreground">Qty: {item.quantity}</p></div><span className="text-sm font-medium">Rs.{(item.product.selling_price * item.quantity).toLocaleString()}</span></div>)}</div>
+              <div className="flex gap-2 mt-4"><Button variant="outline" onClick={() => setCurrentStep('payment')}>Back</Button><Button className="bg-orange-500 hover:bg-orange-600 text-white flex-1" onClick={handlePlaceOrder}>Place Order - Rs.{total.toLocaleString()}</Button></div>
             </div>
           )}
         </div>
-
-        {/* Price Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-24">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Price Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>Rs.{subtotal.toLocaleString()}</span>
-                </div>
-
-                {discount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Discount</span>
-                    <span className="text-green-600">-Rs.{discount.toLocaleString()}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Delivery Charge</span>
-                  <span className={deliveryCharge === 0 ? 'text-green-600' : ''}>
-                    {deliveryCharge === 0 ? 'FREE' : `Rs.${deliveryCharge}`}
-                  </span>
-                </div>
-
-                {couponDiscount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Coupon ({couponCode})</span>
-                    <span className="text-green-600">-Rs.{couponDiscount.toLocaleString()}</span>
-                  </div>
-                )}
-
-                <Separator />
-
-                <div className="flex justify-between font-semibold text-lg">
-                  <span>Total</span>
-                  <span>Rs.{total.toLocaleString()}</span>
-                </div>
-              </CardContent>
-            </Card>
+        <div className="rounded-lg border bg-card p-4 h-fit sticky top-24">
+          <h3 className="font-semibold text-sm mb-3">Price Details</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>Rs.{subtotal.toLocaleString()}</span></div>
+            <div className="flex justify-between text-green-600"><span>Discount</span><span>-Rs.{discount.toLocaleString()}</span></div>
+            {couponDiscount > 0 && <div className="flex justify-between text-green-600"><span>Coupon</span><span>-Rs.{couponDiscount.toLocaleString()}</span></div>}
+            <div className="flex justify-between"><span className="text-muted-foreground">Delivery</span><span>{deliveryCharge === 0 ? <span className="text-green-600">FREE</span> : `Rs.${deliveryCharge}`}</span></div>
+            <Separator /><div className="flex justify-between font-bold"><span>Total</span><span>Rs.{total.toLocaleString()}</span></div>
           </div>
         </div>
       </div>

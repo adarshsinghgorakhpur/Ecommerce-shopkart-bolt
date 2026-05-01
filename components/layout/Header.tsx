@@ -2,347 +2,187 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useAppDispatch, useAppSelector } from '@/redux/hooks';
-import { selectCartCount } from '@/redux/slices/cartSlice';
-import { addToHistory, clearHistory } from '@/redux/slices/searchSlice';
-import { useGetProductsQuery } from '@/redux/api/apiSlice';
-import { NAV_LINKS } from '@/constants';
+import { usePathname, useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, ShoppingCart, Heart, User, Menu, Sun, Moon, GitCompare, MapPin, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetClose,
-} from '@/components/ui/sheet';
-import {
-  Search,
-  ShoppingCart,
-  Heart,
-  User,
-  Menu,
-  GitCompare,
-  MapPin,
-  Package,
-} from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
-
-const DEBOUNCE_MS = 300;
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useAppDispatch, useAppSelector } from '@/redux/hooks';
+import { selectCartCount } from '@/redux/slices/cartSlice';
+import { toggleDarkMode } from '@/redux/slices/uiSlice';
+import { addToHistory, clearHistory } from '@/redux/slices/searchSlice';
+import { useGetProductsQuery } from '@/redux/api/apiSlice';
+import { NAV_LINKS } from '@/constants';
 
 export default function Header() {
   const dispatch = useAppDispatch();
   const router = useRouter();
-
+  const pathname = usePathname();
   const cartCount = useAppSelector(selectCartCount);
-  const searchHistory = useAppSelector((state) => state.search.history);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const darkMode = useAppSelector(s => s.ui.darkMode);
+  const searchHistory = useAppSelector(s => s.search.history);
+  const [mounted, setMounted] = useState(false);
+  const [localQuery, setLocalQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   const searchRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout>();
 
-  // Debounce the search term
+  const { data: suggestions } = useGetProductsQuery({ search: localQuery, limit: 5 }, { skip: localQuery.length < 2 });
+
   useEffect(() => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-    }, DEBOUNCE_MS);
+    setMounted(true);
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [searchTerm]);
-
-  // Query products based on debounced search
-  const { data: searchResults, isLoading: isSearching } = useGetProductsQuery(
-    { search: debouncedSearch, limit: 6 },
-    { skip: debouncedSearch.length < 2 }
-  );
-
-  // Close suggestions on outside click
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSuggestions(false);
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleSearchSubmit = useCallback(
-    (query: string) => {
-      const trimmed = query.trim();
-      if (!trimmed) return;
-      dispatch(addToHistory(trimmed));
-      setShowSuggestions(false);
-      router.push(`/products?search=${encodeURIComponent(trimmed)}`);
-    },
-    [dispatch, router]
-  );
+  const handleSearch = useCallback((q: string) => {
+    if (!q.trim()) return;
+    dispatch(addToHistory(q.trim()));
+    setShowSuggestions(false);
+    router.push(`/products?search=${encodeURIComponent(q.trim())}`);
+  }, [dispatch, router]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-    setShowSuggestions(true);
+  const handleInputChange = (value: string) => {
+    setLocalQuery(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { if (value.length >= 2) setShowSuggestions(true); }, 300);
   };
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSearchSubmit(searchTerm);
-    }
-  };
-
-  const handleSuggestionClick = (name: string) => {
-    setSearchTerm(name);
-    handleSearchSubmit(name);
-  };
-
-  const handleHistoryClick = (term: string) => {
-    setSearchTerm(term);
-    handleSearchSubmit(term);
-  };
-
-  const handleClearHistory = () => {
-    dispatch(clearHistory());
-  };
-
-  const suggestions = searchResults?.slice(0, 6) ?? [];
+  if (!mounted) {
+    return (
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="hidden md:block border-b bg-muted/30 text-xs">
+          <div className="container mx-auto flex items-center justify-between px-4 py-1">
+            <div className="flex items-center gap-4 text-muted-foreground">
+              <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> Deliver to: India</span>
+              <span className="flex items-center gap-1"><Package className="h-3 w-3" /> Track Order</span>
+            </div>
+            <div className="flex items-center gap-4 text-muted-foreground">
+              <span>Help Center</span><span>Sell on ShopKart</span>
+            </div>
+          </div>
+        </div>
+        <div className="container mx-auto px-4">
+          <div className="flex h-16 items-center gap-4">
+            <Button variant="ghost" size="icon" className="md:hidden"><Menu className="h-5 w-5" /></Button>
+            <Link href="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-black">S</div>
+              <span className="hidden sm:inline">ShopKart</span>
+            </Link>
+            <div className="relative flex-1 max-w-xl mx-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input placeholder="Search for products, brands and more..." className="pl-10 pr-4 h-10 bg-muted/50 border-0 focus-visible:ring-1" />
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="hidden sm:flex"><Moon className="h-4 w-4" /></Button>
+              <Link href="/compare"><Button variant="ghost" size="icon" className="hidden sm:flex"><GitCompare className="h-4 w-4" /></Button></Link>
+              <Link href="/wishlist"><Button variant="ghost" size="icon" className="hidden sm:flex"><Heart className="h-4 w-4" /></Button></Link>
+              <Link href="/cart"><Button variant="ghost" size="icon" className="relative"><ShoppingCart className="h-4 w-4" /></Button></Link>
+              <Link href="/auth/login"><Button variant="ghost" size="icon" className="hidden sm:flex"><User className="h-4 w-4" /></Button></Link>
+            </div>
+          </div>
+          <nav className="hidden md:flex items-center gap-1 pb-2 -mt-1 overflow-x-auto">
+            {NAV_LINKS.map(l => (
+              <Link key={l.label} href={l.href} className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent text-muted-foreground">{l.label}</Link>
+            ))}
+          </nav>
+        </div>
+      </header>
+    );
+  }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center gap-4 px-4">
-        {/* Mobile Menu */}
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden">
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Open menu</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5 text-primary" />
-                ShopKart
-              </SheetTitle>
-            </SheetHeader>
-            <nav className="mt-6 flex flex-col gap-2">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="my-2 border-t" />
-              <Link
-                href="/cart"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <ShoppingCart className="h-4 w-4" />
-                Cart
-                {cartCount > 0 && (
-                  <Badge variant="secondary" className="ml-auto">
-                    {cartCount}
-                  </Badge>
-                )}
-              </Link>
-              <Link
-                href="/wishlist"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <Heart className="h-4 w-4" />
-                Wishlist
-              </Link>
-              <Link
-                href="/compare"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <GitCompare className="h-4 w-4" />
-                Compare
-              </Link>
-              <Link
-                href="/auth/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <User className="h-4 w-4" />
-                Login
-              </Link>
-            </nav>
-          </SheetContent>
-        </Sheet>
-
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          <Package className="h-6 w-6 text-primary" />
-          <span className="hidden sm:inline">ShopKart</span>
-        </Link>
-
-        {/* Desktop Nav Links */}
-        <nav className="hidden md:flex items-center gap-1 ml-4">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Search Bar */}
-        <div className="flex-1 max-w-xl mx-4" ref={searchRef}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search products..."
-              value={searchTerm}
-              onChange={handleInputChange}
-              onKeyDown={handleInputKeyDown}
-              onFocus={() => {
-                if (searchTerm.length >= 2 || searchHistory.length > 0) {
-                  setShowSuggestions(true);
-                }
-              }}
-              className="pl-9 pr-4"
-            />
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="hidden md:block border-b bg-muted/30 text-xs">
+        <div className="container mx-auto flex items-center justify-between px-4 py-1">
+          <div className="flex items-center gap-4 text-muted-foreground">
+            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> Deliver to: India</span>
+            <span className="flex items-center gap-1"><Package className="h-3 w-3" /> Track Order</span>
+          </div>
+          <div className="flex items-center gap-4 text-muted-foreground">
+            <span>Help Center</span><span>Sell on ShopKart</span>
+          </div>
+        </div>
+      </div>
+      <div className="container mx-auto px-4">
+        <div className="flex h-16 items-center gap-4">
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild className="md:hidden"><Button variant="ghost" size="icon"><Menu className="h-5 w-5" /></Button></SheetTrigger>
+            <SheetContent side="left" className="w-80">
+              <SheetHeader><SheetTitle>Menu</SheetTitle></SheetHeader>
+              <nav className="mt-6 flex flex-col gap-1">
+                {NAV_LINKS.map(l => <Link key={l.label} href={l.href} onClick={() => setMobileMenuOpen(false)} className="rounded-md px-3 py-2.5 text-sm font-medium hover:bg-accent">{l.label}</Link>)}
+                <div className="my-2 border-t" />
+                <Link href="/profile" onClick={() => setMobileMenuOpen(false)} className="rounded-md px-3 py-2.5 text-sm hover:bg-accent">My Profile</Link>
+                <Link href="/orders" onClick={() => setMobileMenuOpen(false)} className="rounded-md px-3 py-2.5 text-sm hover:bg-accent">My Orders</Link>
+                <Link href="/wishlist" onClick={() => setMobileMenuOpen(false)} className="rounded-md px-3 py-2.5 text-sm hover:bg-accent">Wishlist</Link>
+              </nav>
+            </SheetContent>
+          </Sheet>
+          <Link href="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-black">S</div>
+            <span className="hidden sm:inline">ShopKart</span>
+          </Link>
+          <div ref={searchRef} className="relative flex-1 max-w-xl mx-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={localQuery} onChange={e => handleInputChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch(localQuery)} onFocus={() => localQuery.length >= 2 && setShowSuggestions(true)} placeholder="Search for products, brands and more..." className="pl-10 pr-4 h-10 bg-muted/50 border-0 focus-visible:ring-1" />
+            </div>
             <AnimatePresence>
               {showSuggestions && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg"
-                >
-                  {/* Search History */}
-                  {searchHistory.length > 0 && (
-                    <div className="border-b p-2">
-                      <div className="flex items-center justify-between px-2 py-1">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Recent Searches
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={handleClearHistory}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                      {searchHistory.slice(0, 5).map((term) => (
-                        <button
-                          key={term}
-                          onClick={() => handleHistoryClick(term)}
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                        >
-                          <Search className="h-3 w-3 text-muted-foreground" />
-                          {term}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Product Suggestions */}
-                  {debouncedSearch.length >= 2 && (
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border bg-background shadow-lg">
+                  {localQuery.length >= 2 && suggestions?.map(p => (
+                    <button key={p.id} onClick={() => handleSearch(p.name)} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent transition-colors">
+                      <Search className="h-3.5 w-3.5 text-muted-foreground" /><span>{p.name}</span><span className="ml-auto text-xs text-muted-foreground">{p.brand}</span>
+                    </button>
+                  ))}
+                  {searchHistory.length > 0 && localQuery.length < 2 && (
                     <div className="p-2">
-                      {isSearching && (
-                        <div className="px-2 py-3 text-sm text-muted-foreground">
-                          Searching...
-                        </div>
-                      )}
-                      {!isSearching && suggestions.length === 0 && (
-                        <div className="px-2 py-3 text-sm text-muted-foreground">
-                          No products found.
-                        </div>
-                      )}
-                      {!isSearching &&
-                        suggestions.map((product) => (
-                          <button
-                            key={product.id}
-                            onClick={() => handleSuggestionClick(product.name)}
-                            className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent"
-                          >
-                            <Search className="h-3 w-3 text-muted-foreground shrink-0" />
-                            <span className="truncate">{product.name}</span>
-                            {product.selling_price != null && (
-                              <span className="ml-auto text-xs font-medium text-muted-foreground shrink-0">
-                                Rs.{product.selling_price.toLocaleString()}
-                              </span>
-                            )}
-                          </button>
-                        ))}
+                      <div className="flex items-center justify-between px-2 py-1">
+                        <span className="text-xs font-medium text-muted-foreground">Recent Searches</span>
+                        <button onClick={() => dispatch(clearHistory())} className="text-xs text-primary hover:underline">Clear</button>
+                      </div>
+                      {searchHistory.slice(0, 5).map(h => (
+                        <button key={h} onClick={() => handleSearch(h)} className="flex w-full items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-accent"><Search className="h-3 w-3 text-muted-foreground" />{h}</button>
+                      ))}
                     </div>
                   )}
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => dispatch(toggleDarkMode())} className="hidden sm:flex">
+              {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Link href="/compare"><Button variant="ghost" size="icon" className="hidden sm:flex"><GitCompare className="h-4 w-4" /></Button></Link>
+            <Link href="/wishlist"><Button variant="ghost" size="icon" className="hidden sm:flex"><Heart className="h-4 w-4" /></Button></Link>
+            <Link href="/cart">
+              <Button variant="ghost" size="icon" className="relative">
+                <ShoppingCart className="h-4 w-4" />
+                {cartCount > 0 && <Badge className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]">{cartCount}</Badge>}
+              </Button>
+            </Link>
+            <Link href="/auth/login"><Button variant="ghost" size="icon" className="hidden sm:flex"><User className="h-4 w-4" /></Button></Link>
+          </div>
         </div>
-
-        {/* Right Actions */}
-        <div className="flex items-center gap-1">
-          {/* Wishlist */}
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/wishlist">
-              <Heart className="h-5 w-5" />
-              <span className="sr-only">Wishlist</span>
-            </Link>
-          </Button>
-
-          {/* Compare */}
-          <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex">
-            <Link href="/compare">
-              <GitCompare className="h-5 w-5" />
-              <span className="sr-only">Compare</span>
-            </Link>
-          </Button>
-
-          {/* Cart */}
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/cart" className="relative">
-              <ShoppingCart className="h-5 w-5" />
-              {cartCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="absolute -right-2 -top-2 h-5 min-w-5 justify-center px-1 text-[10px]"
-                >
-                  {cartCount}
-                </Badge>
-              )}
-              <span className="sr-only">Cart</span>
-            </Link>
-          </Button>
-
-          {/* User / Login */}
-          <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex">
-            <Link href="/auth/login">
-              <User className="h-5 w-5" />
-              <span className="sr-only">Login</span>
-            </Link>
-          </Button>
-        </div>
+        <nav className="hidden md:flex items-center gap-1 pb-2 -mt-1 overflow-x-auto">
+          {NAV_LINKS.map(l => (
+            <Link key={l.label} href={l.href} className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent ${pathname === l.href ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'}`}>{l.label}</Link>
+          ))}
+        </nav>
       </div>
     </header>
   );

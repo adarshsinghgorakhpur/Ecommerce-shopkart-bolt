@@ -1,7 +1,11 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { User } from '@/types';
+import type { AppDispatch } from '@/redux/store';
+
 interface AuthState { user: User | null; isAuthenticated: boolean; loading: boolean; error: string | null; }
+
 const initialState: AuthState = { user: null, isAuthenticated: false, loading: false, error: null };
+
 const authSlice = createSlice({
   name: 'auth', initialState,
   reducers: {
@@ -11,5 +15,6 @@ const authSlice = createSlice({
     logout(state) { state.user = null; state.isAuthenticated = false; state.error = null; },
   },
 });
+
 export const { setUser, setLoading, setError, logout: logoutAction } = authSlice.actions;
 export default authSlice.reducer;

@@ -1,130 +1,51 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { Zap, Clock } from 'lucide-react';
 import ProductCard from './ProductCard';
 import type { Product } from '@/types';
 
-interface FlashSaleSectionProps {
-  products: Product[];
-}
+interface Props { products: Product[]; }
 
-function useCountdown(targetDate: string | null) {
-  const [timeLeft, setTimeLeft] = useState({
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    expired: false,
-  });
+function FlashSaleSection({ products }: Props) {
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
 
+  const firstProduct = useMemo(() => products.find(p => p.flash_sale_ends_at), [products]);
+  const limitedProducts = useMemo(() => products.slice(0, 5), [products]);
+  
   useEffect(() => {
-    if (!targetDate) {
-      setTimeLeft({ hours: 0, minutes: 0, seconds: 0, expired: true });
-      return;
-    }
-
-    const calculateTimeLeft = () => {
-      const now = new Date().getTime();
-      const target = new Date(targetDate).getTime();
-      const diff = target - now;
-
-      if (diff <= 0) {
-        return { hours: 0, minutes: 0, seconds: 0, expired: true };
-      }
-
-      return {
-        hours: Math.floor(diff / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
-        seconds: Math.floor((diff % (1000 * 60)) / 1000),
-        expired: false,
-      };
+    if (!firstProduct?.flash_sale_ends_at) return;
+    const calc = () => {
+      const diff = Math.max(0, new Date(firstProduct.flash_sale_ends_at!).getTime() - Date.now());
+      return { hours: Math.floor(diff / 3600000), minutes: Math.floor((diff % 3600000) / 60000), seconds: Math.floor((diff % 60000) / 1000) };
     };
+    setTimeLeft(calc());
+    const t = setInterval(() => setTimeLeft(calc()), 1000);
+    return () => clearInterval(t);
+  }, [firstProduct]);
 
-    setTimeLeft(calculateTimeLeft());
-
-    const interval = setInterval(() => {
-      const result = calculateTimeLeft();
-      setTimeLeft(result);
-      if (result.expired) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [targetDate]);
-
-  return timeLeft;
-}
-
-function padZero(n: number) {
-  return n.toString().padStart(2, '0');
-}
-
-export default function FlashSaleSection({ products }: FlashSaleSectionProps) {
-  const flashSaleProducts = products.filter((p) => p.is_flash_sale);
-
-  // Determine the earliest flash sale end time
-  const earliestEnd = flashSaleProducts.reduce<string | null>((earliest, p) => {
-    if (!p.flash_sale_ends_at) return earliest;
-    if (!earliest) return p.flash_sale_ends_at;
-    return new Date(p.flash_sale_ends_at) < new Date(earliest)
-      ? p.flash_sale_ends_at
-      : earliest;
-  }, null);
-
-  const { hours, minutes, seconds, expired } = useCountdown(earliestEnd);
-
-  if (!flashSaleProducts.length) return null;
+  if (!products.length) return null;
 
   return (
-    <section className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500 text-white">
-            <Zap className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-foreground sm:text-2xl">
-              Flash Sale
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Hurry! Deals end soon
-            </p>
-          </div>
-        </div>
-
-        {!expired && (
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-red-500" />
-            <div className="flex items-center gap-1">
-              <span className="flex h-8 min-w-[2rem] items-center justify-center rounded-md bg-red-500 px-1.5 text-sm font-bold text-white">
-                {padZero(hours)}
-              </span>
-              <span className="text-sm font-bold text-red-500">:</span>
-              <span className="flex h-8 min-w-[2rem] items-center justify-center rounded-md bg-red-500 px-1.5 text-sm font-bold text-white">
-                {padZero(minutes)}
-              </span>
-              <span className="text-sm font-bold text-red-500">:</span>
-              <span className="flex h-8 min-w-[2rem] items-center justify-center rounded-md bg-red-500 px-1.5 text-sm font-bold text-white">
-                {padZero(seconds)}
-              </span>
+    <div className="rounded-xl border bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/20 dark:to-orange-950/20 p-4 sm:p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2"><Zap className="h-5 w-5 text-red-600 fill-red-600" /><h2 className="text-xl font-bold text-red-600">Flash Sale</h2></div>
+          <div className="flex items-center gap-1.5 text-sm">
+            <Clock className="h-4 w-4 text-red-600" />
+            <div className="flex gap-1">
+              {[{ v: timeLeft.hours, l: 'h' }, { v: timeLeft.minutes, l: 'm' }, { v: timeLeft.seconds, l: 's' }].map(t => (
+                <span key={t.l} className="inline-flex items-center rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">{String(t.v).padStart(2, '0')}{t.l}</span>
+              ))}
             </div>
           </div>
-        )}
-        {expired && (
-          <span className="text-sm font-medium text-muted-foreground">
-            Sale ended
-          </span>
-        )}
+        </div>
       </div>
-
-      {/* Product grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {flashSaleProducts.map((product) => (
-          <ProductCard key={product.id} product={product} viewMode="grid" />
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        {limitedProducts.map(p => <ProductCard key={p.id} product={p} />)}
       </div>
-    </section>
+    </div>
   );
 }
+
+export default memo(FlashSaleSection);

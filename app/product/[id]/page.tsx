@@ -1,596 +1,128 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useMemo, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import Image from 'next/image';
-import Link from 'next/link';
-import {
-  Minus,
-  Plus,
-  Heart,
-  GitCompare,
-  Share2,
-  ShoppingCart,
-  Zap,
-  Truck,
-  Star,
-} from 'lucide-react';
-import { useGetProductQuery, useGetProductsQuery, useGetReviewsQuery } from '@/redux/api/apiSlice';
-import { addRecentlyViewed } from '@/redux/slices/recentlyViewedSlice';
-import { addToCart } from '@/redux/slices/cartSlice';
-import { addToCompare } from '@/redux/slices/compareSlice';
-import { useAppDispatch } from '@/redux/hooks';
-import { DELIVERY_ESTIMATE_DAYS, FREE_DELIVERY_THRESHOLD } from '@/constants';
-import ProductCard from '@/components/product/ProductCard';
-import ProductCardSkeleton from '@/components/product/SkeletonCard';
-import ReviewSection from '@/components/reviews/ReviewSection';
+import { Star, Heart, ShoppingCart, Truck, Shield, RotateCcw, Minus, Plus, GitCompare, Share2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
+import { useAppDispatch } from '@/redux/hooks';
+import { addToCart } from '@/redux/slices/cartSlice';
+import { addToCompare } from '@/redux/slices/compareSlice';
+import { addRecentlyViewed } from '@/redux/slices/recentlyViewedSlice';
+import { useGetProductQuery, useGetProductsQuery, useGetReviewsQuery } from '@/redux/api/apiSlice';
+import ProductCard from '@/components/product/ProductCard';
+import ReviewSection from '@/components/reviews/ReviewSection';
+import { DELIVERY_ESTIMATE_DAYS, FREE_DELIVERY_THRESHOLD } from '@/constants';
 import type { ProductVariant } from '@/types';
 
 export default function ProductDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const dispatch = useAppDispatch();
   const slug = params.id as string;
+  const dispatch = useAppDispatch();
+  const { data: product, isLoading } = useGetProductQuery(slug);
+  const { data: reviews } = useGetReviewsQuery(product?.id || '', { skip: !product?.id });
+  const { data: similarProducts } = useGetProductsQuery({ category: product?.category?.slug, limit: 6 }, { skip: !product?.category });
 
-  const { data: product, isLoading: productLoading } = useGetProductQuery(slug);
-  const { data: reviews } = useGetReviewsQuery(product?.id || '');
-  const { data: similarProducts, isLoading: similarLoading } = useGetProductsQuery(
-    { category: product?.category?.slug, limit: 8 },
-    { skip: !product?.category }
-  );
-
-  // Variant state
+  const [selectedImage, setSelectedImage] = useState(0);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({});
-
-  // Quantity state
   const [quantity, setQuantity] = useState(1);
-
-  // Image gallery state
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
   const [isZooming, setIsZooming] = useState(false);
 
-  // Wishlist state
-  const [isWishlisted, setIsWishlisted] = useState(false);
-
-  // Derived data
   const images = product?.images || [];
-  const selectedImage = images[selectedImageIndex] || images[0];
+  const variants = product?.variants || [];
+  const variantTypes = useMemo(() => Array.from(new Set(variants.map(v => v.variant_type))), [variants]);
 
-  // Group variants by type using Array.from(new Set(...)) to avoid downlevelIteration
-  const variantTypes = useMemo(() => {
-    if (!product?.variants) return [];
-    return Array.from(new Set(product.variants.map((v) => v.variant_type)));
-  }, [product?.variants]);
-
-  const variantsByType = useMemo(() => {
-    if (!product?.variants) return {};
-    const grouped: Record<string, ProductVariant[]> = {};
-    product.variants.forEach((v) => {
-      if (!grouped[v.variant_type]) grouped[v.variant_type] = [];
-      grouped[v.variant_type].push(v);
-    });
-    return grouped;
-  }, [product?.variants]);
-
-  // Calculate current price based on selected variants
-  const currentPrice = useMemo(() => {
-    if (!product) return 0;
-    let price = product.selling_price;
-    Object.values(selectedVariants).forEach((variant) => {
-      price += variant.price_adjustment;
-    });
-    return price;
+  const effectivePrice = useMemo(() => {
+    let adj = 0;
+    Object.values(selectedVariants).forEach(v => { adj += v.price_adjustment; });
+    return (product?.selling_price || 0) + adj;
   }, [product, selectedVariants]);
 
-  const currentBasePrice = useMemo(() => {
-    if (!product) return 0;
-    let price = product.base_price;
-    Object.values(selectedVariants).forEach((variant) => {
-      price += variant.price_adjustment;
-    });
-    return price;
-  }, [product, selectedVariants]);
-
-  const currentDiscount = useMemo(() => {
-    if (currentBasePrice <= 0) return 0;
-    return Math.round(((currentBasePrice - currentPrice) / currentBasePrice) * 100);
-  }, [currentBasePrice, currentPrice]);
-
-  // Track recently viewed
-  const handleTrackRecentlyViewed = useCallback(() => {
-    if (product) {
-      dispatch(addRecentlyViewed(product));
-    }
-  }, [product, dispatch]);
-
-  // Track when product loads
-  useEffect(() => {
-    if (product) {
-      handleTrackRecentlyViewed();
-    }
-  }, [product, handleTrackRecentlyViewed]);
-
-  // Variant selection
-  const handleVariantSelect = useCallback(
-    (variantType: string, variant: ProductVariant) => {
-      setSelectedVariants((prev) => {
-        const updated = { ...prev };
-        if (prev[variantType]?.id === variant.id) {
-          delete updated[variantType];
-        } else {
-          updated[variantType] = variant;
-        }
-        return updated;
-      });
-    },
-    []
-  );
-
-  // Quantity handlers
-  const handleQuantityDecrease = useCallback(() => {
-    setQuantity((prev) => Math.max(1, prev - 1));
-  }, []);
-
-  const handleQuantityIncrease = useCallback(() => {
-    setQuantity((prev) => Math.min(product?.stock || 99, prev + 1));
-  }, [product?.stock]);
-
-  // Add to cart
   const handleAddToCart = useCallback(() => {
     if (!product) return;
-    const selectedVariantList = Object.values(selectedVariants);
-    const selectedVariant =
-      selectedVariantList.length > 0 ? selectedVariantList[0] : undefined;
-    dispatch(addToCart({ product, variant: selectedVariant, quantity }));
+    dispatch(addToCart({ product, variant: Object.values(selectedVariants)[0], quantity }));
   }, [product, selectedVariants, quantity, dispatch]);
 
-  // Buy now
   const handleBuyNow = useCallback(() => {
     handleAddToCart();
-    router.push('/cart');
-  }, [handleAddToCart, router]);
+    window.location.href = '/checkout';
+  }, [handleAddToCart]);
 
-  // Compare
-  const handleCompare = useCallback(() => {
-    if (product) {
-      dispatch(addToCompare(product));
-    }
-  }, [product, dispatch]);
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setZoomPosition({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 });
+  };
 
-  // Share
-  const handleShare = useCallback(async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: product?.name,
-          url: window.location.href,
-        });
-      } catch {
-        // User cancelled or share failed
-      }
-    } else {
-      await navigator.clipboard.writeText(window.location.href);
-    }
-  }, [product?.name]);
+  if (isLoading) return <div className="container mx-auto px-4 py-8"><div className="grid md:grid-cols-2 gap-8"><div className="aspect-square bg-muted animate-pulse rounded-lg" /><div className="space-y-4"><div className="h-6 w-24 bg-muted animate-pulse rounded" /><div className="h-8 w-3/4 bg-muted animate-pulse rounded" /><div className="h-10 w-32 bg-muted animate-pulse rounded" /></div></div></div>;
+  if (!product) return <div className="container mx-auto px-4 py-20 text-center"><h2 className="text-2xl font-bold">Product not found</h2></div>;
 
-  // Image zoom
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isZooming) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setZoomPosition({ x, y });
-    },
-    [isZooming]
-  );
-
-  // Delivery estimate date
-  const estimatedDelivery = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + DELIVERY_ESTIMATE_DAYS);
-    return date.toLocaleDateString('en-IN', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  }, []);
-
-  // Loading state
-  if (productLoading) {
-    return (
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid gap-8 lg:grid-cols-2">
-          <div className="aspect-square animate-pulse rounded-lg bg-muted" />
-          <div className="space-y-4">
-            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
-            <div className="h-8 w-3/4 animate-pulse rounded bg-muted" />
-            <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-full animate-pulse rounded bg-muted" />
-            <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-            <div className="h-10 w-48 animate-pulse rounded bg-muted" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!product) {
-    return (
-      <div className="container mx-auto px-4 py-16 text-center">
-        <p className="text-lg font-medium text-muted-foreground">Product not found</p>
-        <Button variant="outline" className="mt-4" onClick={() => router.push('/products')}>
-          Browse Products
-        </Button>
-      </div>
-    );
-  }
-
-  const isOutOfStock = product.stock === 0;
-  const isLowStock = product.stock > 0 && product.stock <= 5;
+  dispatch(addRecentlyViewed(product));
+  const deliveryDate = new Date(); deliveryDate.setDate(deliveryDate.getDate() + DELIVERY_ESTIMATE_DAYS);
 
   return (
     <div className="container mx-auto px-4 py-6">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-6">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">Home</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/products">Products</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          {product.category && (
-            <>
-              <BreadcrumbItem>
-                <BreadcrumbLink href={`/products?category=${product.category.slug}`}>
-                  {product.category.name}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-            </>
-          )}
-          <BreadcrumbItem>
-            <BreadcrumbPage>{product.name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      {/* Main Content */}
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Image Gallery */}
-        <div className="space-y-4">
-          {/* Main Image with Zoom */}
-          <div
-            className="relative aspect-square cursor-crosshair overflow-hidden rounded-lg border"
-            onMouseEnter={() => setIsZooming(true)}
-            onMouseLeave={() => setIsZooming(false)}
-            onMouseMove={handleMouseMove}
-          >
-            <div
-              className="h-full w-full transition-transform duration-200"
-              style={
-                isZooming && selectedImage
-                  ? {
-                      backgroundImage: `url(${selectedImage.url})`,
-                      backgroundSize: '200%',
-                      backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
-                      backgroundRepeat: 'no-repeat',
-                    }
-                  : undefined
-              }
-            >
-              {selectedImage && (
-                <Image
-                  src={selectedImage.url}
-                  alt={selectedImage.alt_text || product.name}
-                  fill
-                  className={isZooming ? 'opacity-0' : 'object-cover'}
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  priority
-                  placeholder="blur"
-                  blurDataURL="/placeholder.png"
-                />
-              )}
-            </div>
-
-            {/* Badges */}
-            <div className="absolute left-3 top-3 flex flex-col gap-1">
-              {product.discount_percent > 0 && (
-                <Badge className="bg-red-500 text-white">
-                  {product.discount_percent}% OFF
-                </Badge>
-              )}
-              {product.is_flash_sale && (
-                <Badge className="bg-orange-500 text-white">
-                  <Zap className="mr-1 h-3 w-3" />
-                  FLASH SALE
-                </Badge>
-              )}
-            </div>
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
+        <a href="/" className="hover:text-foreground">Home</a><ChevronRight className="h-3 w-3" />
+        <a href={`/products?category=${product.category?.slug}`} className="hover:text-foreground">{product.category?.name}</a><ChevronRight className="h-3 w-3" />
+        <span className="text-foreground truncate">{product.name}</span>
+      </nav>
+      <div className="grid md:grid-cols-2 gap-8">
+        <div className="space-y-3">
+          <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted cursor-zoom-in" onMouseEnter={() => setIsZooming(true)} onMouseLeave={() => setIsZooming(false)} onMouseMove={handleMouseMove}>
+            <Image src={images[selectedImage]?.url || 'https://images.pexels.com/photos/1092644/pexels-photo-1092644.jpeg'} alt={product.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" priority />
+            {isZooming && <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url(${images[selectedImage]?.url})`, backgroundSize: '200%', backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%` }} />}
+            {product.discount_percent > 0 && <Badge className="absolute left-3 top-3 bg-green-600 text-white">{product.discount_percent}% OFF</Badge>}
           </div>
-
-          {/* Thumbnail Gallery */}
-          {images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {images.map((image, index) => (
-                <button
-                  key={image.id}
-                  onClick={() => setSelectedImageIndex(index)}
-                  className={`relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border-2 transition-colors ${
-                    index === selectedImageIndex
-                      ? 'border-primary'
-                      : 'border-transparent hover:border-muted-foreground/30'
-                  }`}
-                >
-                  <Image
-                    src={image.url}
-                    alt={image.alt_text || `${product.name} ${index + 1}`}
-                    fill
-                    className="object-cover"
-                    sizes="64px"
-                    placeholder="blur"
-                    blurDataURL="/placeholder.png"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-2 overflow-x-auto pb-1">{images.map((img, i) => <button key={img.id} onClick={() => setSelectedImage(i)} className={`relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border-2 transition-colors ${i === selectedImage ? 'border-primary' : 'border-transparent'}`}><Image src={img.url} alt={img.alt_text} fill className="object-cover" sizes="64px" /></button>)}</div>
         </div>
-
-        {/* Product Info */}
-        <div className="space-y-6">
-          {/* Brand & Name */}
-          <div>
-            {product.brand && (
-              <p className="text-sm font-medium text-muted-foreground">{product.brand}</p>
-            )}
-            <h1 className="mt-1 text-2xl font-bold lg:text-3xl">{product.name}</h1>
-          </div>
-
-          {/* Rating */}
+        <div className="space-y-4">
+          <div><p className="text-sm text-muted-foreground uppercase tracking-wide">{product.brand}</p><h1 className="text-2xl font-bold mt-1">{product.name}</h1></div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className={`h-4 w-4 ${
-                    i < Math.round(product.rating)
-                      ? 'fill-yellow-400 text-yellow-400'
-                      : 'text-muted-foreground/30'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-sm font-medium">{product.rating.toFixed(1)}</span>
-            <span className="text-sm text-muted-foreground">
-              ({product.review_count} reviews)
-            </span>
+            <span className="flex items-center gap-1 rounded bg-green-600 px-2 py-0.5 text-sm font-bold text-white">{product.rating} <Star className="h-3 w-3 fill-white" /></span>
+            <span className="text-sm text-muted-foreground">{product.review_count.toLocaleString()} Ratings & {reviews?.length || 0} Reviews</span>
           </div>
-
-          {/* Price */}
           <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-bold">
-              ₹{currentPrice.toLocaleString()}
-            </span>
-            {currentDiscount > 0 && (
-              <>
-                <span className="text-lg text-muted-foreground line-through">
-                  ₹{currentBasePrice.toLocaleString()}
-                </span>
-                <Badge variant="destructive" className="text-sm">
-                  {currentDiscount}% OFF
-                </Badge>
-              </>
-            )}
+            <span className="text-3xl font-bold">Rs.{effectivePrice.toLocaleString()}</span>
+            {product.base_price > product.selling_price && (<><span className="text-lg text-muted-foreground line-through">Rs.{product.base_price.toLocaleString()}</span><Badge variant="secondary" className="bg-green-100 text-green-800">{product.discount_percent}% off</Badge></>)}
           </div>
-
-          {/* Short Description */}
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {product.short_description}
-          </p>
-
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Available Offers</p>
+            <div className="space-y-1 text-sm">
+              <p className="text-muted-foreground"><span className="font-medium text-foreground">Bank Offer</span> 10% off on HDFC Credit Cards</p>
+              <p className="text-muted-foreground"><span className="font-medium text-foreground">Coupon</span> Use WELCOME10 for 10% off</p>
+            </div>
+          </div>
           <Separator />
-
-          {/* Variant Selection */}
-          {variantTypes.map((variantType) => (
-            <div key={variantType} className="space-y-2">
-              <p className="text-sm font-medium">
-                {variantType}:{' '}
-                <span className="text-muted-foreground">
-                  {selectedVariants[variantType]?.variant_value || 'Select'}
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(variantsByType[variantType] || []).map((variant) => (
-                  <Button
-                    key={variant.id}
-                    variant={
-                      selectedVariants[variantType]?.id === variant.id
-                        ? 'default'
-                        : 'outline'
-                    }
-                    size="sm"
-                    onClick={() => handleVariantSelect(variantType, variant)}
-                    disabled={variant.stock === 0}
-                  >
-                    {variant.variant_value}
-                    {variant.price_adjustment !== 0 && (
-                      <span className="ml-1 text-xs opacity-70">
-                        {variant.price_adjustment > 0 ? '+' : ''}
-                        ₹{variant.price_adjustment}
-                      </span>
-                    )}
-                  </Button>
-                ))}
-              </div>
+          {variantTypes.map(type => (
+            <div key={type}>
+              <p className="text-sm font-medium mb-2">Select {type.charAt(0).toUpperCase() + type.slice(1)}</p>
+              <div className="flex flex-wrap gap-2">{variants.filter(v => v.variant_type === type).map(variant => <Button key={variant.id} variant={selectedVariants[type]?.id === variant.id ? 'default' : 'outline'} size="sm" onClick={() => setSelectedVariants(prev => ({ ...prev, [type]: variant }))} className="min-w-[3rem]">{variant.variant_value}</Button>)}</div>
             </div>
           ))}
-
-          {/* Quantity Picker */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Quantity</p>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={handleQuantityDecrease}
-                disabled={quantity <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="flex h-9 w-12 items-center justify-center rounded-md border text-sm font-medium">
-                {quantity}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={handleQuantityIncrease}
-                disabled={quantity >= product.stock}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-              {isLowStock && (
-                <span className="ml-2 text-xs font-medium text-orange-500">
-                  Only {product.stock} left in stock!
-                </span>
-              )}
-              {isOutOfStock && (
-                <span className="ml-2 text-xs font-medium text-red-500">
-                  Out of stock
-                </span>
-              )}
-            </div>
-          </div>
-
+          <div><p className="text-sm font-medium mb-2">Quantity</p><div className="flex items-center gap-2"><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus className="h-3 w-3" /></Button><span className="w-10 text-center font-medium">{quantity}</span><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}><Plus className="h-3 w-3" /></Button>{product.stock < 10 && <span className="text-xs text-red-600 font-medium">Only {product.stock} left</span>}</div></div>
           <Separator />
-
-          {/* Delivery Estimate */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm">
-              <Truck className="h-4 w-4 text-muted-foreground" />
-              <span>
-                Delivery by{' '}
-                <span className="font-medium">{estimatedDelivery}</span>
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {currentPrice >= FREE_DELIVERY_THRESHOLD
-                ? 'Free delivery on this order'
-                : `Free delivery on orders above ₹${FREE_DELIVERY_THRESHOLD.toLocaleString()}`}
-            </p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-3">
-            <Button
-              size="lg"
-              className="flex-1"
-              onClick={handleAddToCart}
-              disabled={isOutOfStock}
-            >
-              <ShoppingCart className="mr-2 h-5 w-5" />
-              Add to Cart
-            </Button>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="flex-1"
-              onClick={handleBuyNow}
-              disabled={isOutOfStock}
-            >
-              Buy Now
-            </Button>
-          </div>
-
-          {/* Wishlist, Compare, Share */}
+          <div className="flex items-start gap-3 text-sm"><Truck className="h-5 w-5 text-muted-foreground mt-0.5" /><div><p className="font-medium">Delivery by {deliveryDate.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })}</p><p className="text-muted-foreground">{effectivePrice >= FREE_DELIVERY_THRESHOLD ? <span className="text-green-600 font-medium">FREE Delivery</span> : 'Rs.40 Delivery'}</p></div></div>
+          <div className="flex gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Secure Payment</span><span className="flex items-center gap-1"><RotateCcw className="h-3.5 w-3.5" /> 7-Day Returns</span></div>
+          <Separator />
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setIsWishlisted((prev) => !prev)}
-            >
-              <Heart
-                className={`mr-2 h-4 w-4 ${
-                  isWishlisted ? 'fill-red-500 text-red-500' : ''
-                }`}
-              />
-              {isWishlisted ? 'Wishlisted' : 'Wishlist'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={handleCompare}
-            >
-              <GitCompare className="mr-2 h-4 w-4" />
-              Compare
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1" onClick={handleShare}>
-              <Share2 className="mr-2 h-4 w-4" />
-              Share
-            </Button>
+            <Button size="lg" className="flex-1 h-12 text-base" onClick={handleAddToCart}><ShoppingCart className="mr-2 h-5 w-5" /> Add to Cart</Button>
+            <Button size="lg" variant="secondary" className="flex-1 h-12 text-base bg-orange-500 hover:bg-orange-600 text-white" onClick={handleBuyNow}>Buy Now</Button>
           </div>
-
-          <Separator />
-
-          {/* Product Description */}
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">Product Description</h2>
-            <div
-              className="prose prose-sm max-w-none text-muted-foreground"
-              dangerouslySetInnerHTML={{ __html: product.description }}
-            />
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setIsWishlisted(!isWishlisted)}><Heart className={`mr-1 h-4 w-4 ${isWishlisted ? 'fill-red-500 text-red-500' : ''}`} /> Wishlist</Button>
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => dispatch(addToCompare(product))}><GitCompare className="mr-1 h-4 w-4" /> Compare</Button>
+            <Button variant="outline" size="sm" className="flex-1"><Share2 className="mr-1 h-4 w-4" /> Share</Button>
           </div>
+          <div className="pt-4"><h3 className="font-semibold mb-2">Product Description</h3><p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p></div>
         </div>
       </div>
-
-      {/* Reviews Section */}
-      <div className="mt-12">
-        <Separator className="mb-8" />
-        <h2 className="mb-6 text-xl font-bold">Customer Reviews</h2>
-        <ReviewSection productId={product.id} reviews={reviews || []} />
-      </div>
-
-      {/* Similar Products */}
-      {similarProducts && similarProducts.length > 0 && (
-        <div className="mt-12">
-          <Separator className="mb-8" />
-          <h2 className="mb-6 text-xl font-bold">Similar Products</h2>
-          {similarLoading ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <ProductCardSkeleton key={i} />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {similarProducts
-                .filter((p) => p.id !== product.id)
-                .slice(0, 4)
-                .map((p) => (
-                  <ProductCard key={p.id} product={p} />
-                ))}
-            </div>
-          )}
-        </div>
+      <div className="mt-12"><ReviewSection productId={product.id} reviews={reviews || []} /></div>
+      {similarProducts && similarProducts.length > 1 && (
+        <section className="mt-12"><h2 className="text-xl font-bold mb-4">Similar Products</h2><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">{similarProducts.filter(p => p.id !== product.id).map(p => <ProductCard key={p.id} product={p} />)}</div></section>
       )}
     </div>
   );

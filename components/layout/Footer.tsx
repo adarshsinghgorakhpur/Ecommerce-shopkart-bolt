@@ -1,142 +1,55 @@
 import Link from 'next/link';
-import { Phone, Mail, MapPin, Package } from 'lucide-react';
+import { Mail, Phone, MapPin } from 'lucide-react';
 
-const SHOP_LINKS = [
-  { label: 'Electronics', href: '/products?category=electronics' },
-  { label: 'Fashion', href: '/products?category=fashion' },
-  { label: 'Home & Kitchen', href: '/products?category=home-kitchen' },
-  { label: 'Sports', href: '/products?category=sports' },
-  { label: 'Books', href: '/products?category=books' },
-  { label: 'Beauty', href: '/products?category=beauty' },
-];
-
-const ACCOUNT_LINKS = [
-  { label: 'My Account', href: '/account' },
-  { label: 'Order History', href: '/account/orders' },
-  { label: 'Wishlist', href: '/wishlist' },
-  { label: 'Cart', href: '/cart' },
-  { label: 'Login', href: '/auth/login' },
-  { label: 'Register', href: '/auth/register' },
-];
-
-const HELP_LINKS = [
-  { label: 'Contact Us', href: '/contact' },
-  { label: 'Shipping Info', href: '/shipping' },
-  { label: 'Returns & Exchanges', href: '/returns' },
-  { label: 'FAQ', href: '/faq' },
-  { label: 'Privacy Policy', href: '/privacy' },
-  { label: 'Terms of Service', href: '/terms' },
-];
-
-const PAYMENT_BADGES = ['UPI', 'Visa', 'Mastercard', 'RuPay', 'Net Banking', 'COD'];
+const FOOTER_LINKS = {
+  Shop: [
+    { label: 'Electronics', href: '/products?category=electronics' },
+    { label: 'Fashion', href: '/products?category=fashion' },
+    { label: 'Home & Kitchen', href: '/products?category=home-kitchen' },
+    { label: 'Sports', href: '/products?category=sports' },
+    { label: 'Books', href: '/products?category=books' },
+  ],
+  Account: [
+    { label: 'My Profile', href: '/profile' },
+    { label: 'Orders', href: '/orders' },
+    { label: 'Wishlist', href: '/wishlist' },
+    { label: 'Cart', href: '/cart' },
+  ],
+  Help: [
+    { label: 'Help Center', href: '#' },
+    { label: 'Returns', href: '#' },
+    { label: 'Shipping Info', href: '#' },
+    { label: 'Privacy Policy', href: '#' },
+  ],
+};
 
 export default function Footer() {
   return (
-    <footer className="border-t bg-muted/40">
-      <div className="container mx-auto px-4 py-10">
+    <footer className="border-t bg-muted/30">
+      <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Branding & Contact */}
-          <div className="space-y-4">
-            <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-              <Package className="h-6 w-6 text-primary" />
+          <div>
+            <Link href="/" className="flex items-center gap-2 font-bold text-xl">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-black">S</div>
               ShopKart
             </Link>
-            <p className="text-sm text-muted-foreground">
-              Your one-stop destination for quality products at unbeatable prices.
-              Shop with confidence and enjoy fast, reliable delivery.
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="h-4 w-4 shrink-0" />
-                <span>+91 12345 67890</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Mail className="h-4 w-4 shrink-0" />
-                <span>support@shopkart.com</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <MapPin className="h-4 w-4 shrink-0" />
-                <span>Bengaluru, Karnataka, India</span>
-              </div>
+            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">Your one-stop destination for everything you need. Quality products, unbeatable prices, and fast delivery.</p>
+            <div className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2"><Phone className="h-3.5 w-3.5" /> 1800-123-4567</span>
+              <span className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> support@shopkart.com</span>
+              <span className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5" /> Mumbai, India</span>
             </div>
           </div>
-
-          {/* Shop Links */}
-          <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider">
-              Shop
-            </h3>
-            <ul className="space-y-2">
-              {SHOP_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Account Links */}
-          <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider">
-              Account
-            </h3>
-            <ul className="space-y-2">
-              {ACCOUNT_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Help Links */}
-          <div>
-            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider">
-              Help
-            </h3>
-            <ul className="space-y-2">
-              {HELP_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {Object.entries(FOOTER_LINKS).map(([title, links]) => (
+            <div key={title}>
+              <h3 className="font-semibold text-sm uppercase tracking-wider mb-3">{title}</h3>
+              <ul className="space-y-2">{links.map(l => <li key={l.label}><Link href={l.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">{l.label}</Link></li>)}</ul>
+            </div>
+          ))}
         </div>
-
-        {/* Payment Methods & Copyright */}
-        <div className="mt-10 border-t pt-6">
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground mr-1">We accept:</span>
-              {PAYMENT_BADGES.map((method) => (
-                <span
-                  key={method}
-                  className="inline-flex items-center rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                >
-                  {method}
-                </span>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              &copy; {new Date().getFullYear()} ShopKart. All rights reserved.
-            </p>
-          </div>
+        <div className="mt-10 border-t pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground">&copy; 2026 ShopKart. All rights reserved.</p>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground"><span>Visa</span><span>Mastercard</span><span>UPI</span><span>COD</span></div>
         </div>
       </div>
     </footer>

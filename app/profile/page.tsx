@@ -1,284 +1,65 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/services/supabase';
-import { useAppDispatch, useAppSelector } from '@/redux/hooks';
-import { setUser, logoutAction } from '@/redux/slices/authSlice';
-import type { User, Address } from '@/types';
+import { User, MapPin, Package, LogOut, CreditCard as Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { User as UserIcon, MapPin, ShoppingBag, LogOut, Pencil, Save, X } from 'lucide-react';
-import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { supabase } from '@/services/supabase';
+import type { User as UserType, Address } from '@/types';
 
 export default function ProfilePage() {
-  const dispatch = useAppDispatch();
-  const router = useRouter();
-  const { user, isAuthenticated } = useAppSelector((state) => state.auth);
-
-  const [profile, setProfile] = useState<User | null>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) {
-          router.push('/auth/login');
-          return;
-        }
-
-        const [profileRes, addressesRes] = await Promise.all([
-          supabase.from('users').select('*').eq('id', session.user.id).single(),
-          supabase.from('addresses').select('*').eq('user_id', session.user.id).order('is_default', { ascending: false }),
-        ]);
-
-        if (profileRes.data) {
-          setProfile(profileRes.data);
-          setEditName(profileRes.data.full_name);
-          dispatch(setUser({ ...profileRes.data, email: session.user.email }));
-        }
-        if (addressesRes.data) {
-          setAddresses(addressesRes.data);
-        }
-      } catch (error) {
-        console.error('Error fetching profile:', error);
-      } finally {
-        setLoading(false);
+    const fetch = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).maybeSingle();
+        setUser({ ...profile, email: authUser.email } as UserType);
+        setEditName(profile?.full_name || '');
+        const { data: addrs } = await supabase.from('addresses').select('*').eq('user_id', authUser.id);
+        setAddresses(addrs as Address[] || []);
       }
     };
+    fetch();
+  }, []);
 
-    fetchProfile();
-  }, [dispatch, router]);
+  const handleSave = async () => { if (!user) return; await supabase.from('users').update({ full_name: editName }).eq('id', user.id); setUser({ ...user, full_name: editName }); setEditing(false); };
+  const handleLogout = async () => { await supabase.auth.signOut(); window.location.href = '/auth/login'; };
 
-  const handleSaveName = async () => {
-    if (!profile || !editName.trim()) return;
-    setSaving(true);
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .update({ full_name: editName.trim() })
-        .eq('id', profile.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setProfile(data);
-        dispatch(setUser({ ...data, email: profile.email }));
-        setEditMode(false);
-      }
-    } catch (error) {
-      console.error('Error updating name:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    dispatch(logoutAction());
-    router.push('/');
-  };
-
-  if (loading) {
-    return (
-      <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-muted-foreground">Loading profile...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4">
-        <div className="text-center">
-          <UserIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-          <h2 className="text-xl font-bold">Profile not found</h2>
-          <p className="mt-2 text-muted-foreground">Please log in to view your profile.</p>
-          <Button asChild className="mt-4">
-            <Link href="/auth/login">Login</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return <div className="container mx-auto px-4 py-20 text-center"><p className="text-muted-foreground">Please login to view your profile</p><a href="/auth/login"><Button className="mt-4">Login</Button></a></div>;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">My Account</h1>
-
-      <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="mb-6 w-full justify-start">
-          <TabsTrigger value="profile" className="gap-2">
-            <UserIcon className="h-4 w-4" />
-            Profile
-          </TabsTrigger>
-          <TabsTrigger value="addresses" className="gap-2">
-            <MapPin className="h-4 w-4" />
-            Addresses
-          </TabsTrigger>
-          <TabsTrigger value="orders" className="gap-2">
-            <ShoppingBag className="h-4 w-4" />
-            Orders
-          </TabsTrigger>
+    <div className="container mx-auto px-4 py-6 max-w-4xl">
+      <h1 className="text-2xl font-bold mb-6">My Profile</h1>
+      <Tabs defaultValue="profile">
+        <TabsList>
+          <TabsTrigger value="profile"><User className="h-4 w-4 mr-1" /> Profile</TabsTrigger>
+          <TabsTrigger value="addresses"><MapPin className="h-4 w-4 mr-1" /> Addresses</TabsTrigger>
+          <TabsTrigger value="orders"><Package className="h-4 w-4 mr-1" /> Orders</TabsTrigger>
         </TabsList>
-
-        {/* Profile Tab */}
-        <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle>Personal Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  {editMode ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="name"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Enter your name"
-                      />
-                      <Button
-                        size="icon"
-                        onClick={handleSaveName}
-                        disabled={saving || !editName.trim()}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => {
-                          setEditMode(false);
-                          setEditName(profile.full_name);
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">{profile.full_name || 'Not set'}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditMode(true)}
-                      >
-                        <Pencil className="mr-1 h-3 w-3" />
-                        Edit
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <p className="text-sm text-muted-foreground">{profile.email || 'Not available'}</p>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <p className="text-sm text-muted-foreground">{profile.phone || 'Not set'}</p>
-                </div>
-              </div>
-
-              <Separator />
-
-              <Button
-                variant="destructive"
-                onClick={handleLogout}
-                className="gap-2"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Addresses Tab */}
-        <TabsContent value="addresses">
-          {addresses.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <MapPin className="mb-4 h-12 w-12 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">No saved addresses</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  You haven&apos;t saved any addresses yet.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {addresses.map((address) => (
-                <Card key={address.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{address.full_name}</span>
-                          {address.is_default && (
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              Default
-                            </span>
-                          )}
-                        </div>
-                        {address.label && (
-                          <p className="text-xs text-muted-foreground">{address.label}</p>
-                        )}
-                        <p className="text-sm">
-                          {address.address_line1}
-                          {address.address_line2 && `, ${address.address_line2}`}
-                        </p>
-                        <p className="text-sm">
-                          {address.city}, {address.state} - {address.pincode}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Phone: {address.phone}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+        <TabsContent value="profile" className="mt-4">
+          <div className="rounded-lg border p-6 space-y-4">
+            <div className="flex items-center justify-between"><h3 className="font-semibold">Personal Information</h3><Button variant="outline" size="sm" onClick={() => setEditing(!editing)}><Edit className="h-3.5 w-3.5 mr-1" /> {editing ? 'Cancel' : 'Edit'}</Button></div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div><Label className="text-xs text-muted-foreground">Full Name</Label>{editing ? <Input value={editName} onChange={e => setEditName(e.target.value)} className="h-9 mt-1" /> : <p className="font-medium mt-1">{user.full_name || 'Not set'}</p>}</div>
+              <div><Label className="text-xs text-muted-foreground">Email</Label><p className="font-medium mt-1">{user.email}</p></div>
+              <div><Label className="text-xs text-muted-foreground">Phone</Label><p className="font-medium mt-1">{user.phone || 'Not set'}</p></div>
             </div>
-          )}
+            {editing && <Button size="sm" onClick={handleSave}>Save Changes</Button>}
+          </div>
+          <div className="mt-4"><Button variant="outline" onClick={handleLogout} className="text-red-600 hover:text-red-700 hover:bg-red-50"><LogOut className="h-4 w-4 mr-2" /> Logout</Button></div>
         </TabsContent>
-
-        {/* Orders Tab */}
-        <TabsContent value="orders">
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <ShoppingBag className="mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="text-lg font-semibold">View your orders</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Track and manage all your orders.
-              </p>
-              <Button asChild className="mt-4">
-                <Link href="/orders">Go to Orders</Link>
-              </Button>
-            </CardContent>
-          </Card>
+        <TabsContent value="addresses" className="mt-4">
+          <div className="space-y-3">{addresses.map(a => <div key={a.id} className="rounded-lg border p-4"><div className="flex items-center gap-2 mb-1"><span className="font-medium text-sm">{a.full_name}</span><span className="text-xs bg-muted px-2 py-0.5 rounded">{a.label}</span></div><p className="text-sm text-muted-foreground">{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p></div>)}{addresses.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No saved addresses</p>}</div>
         </TabsContent>
+        <TabsContent value="orders" className="mt-4"><div className="text-center py-8"><Package className="h-12 w-12 mx-auto text-muted-foreground" /><p className="text-muted-foreground mt-2">View your orders on the dedicated page</p><a href="/orders"><Button className="mt-3" size="sm">View Orders</Button></a></div></TabsContent>
       </Tabs>
     </div>
   );

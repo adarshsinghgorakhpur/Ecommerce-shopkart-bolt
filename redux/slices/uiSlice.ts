@@ -1,14 +1,31 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+
 interface UIState { darkMode: boolean; mobileMenuOpen: boolean; searchOpen: boolean; cartDrawerOpen: boolean; }
+
 const initialState: UIState = { darkMode: true, mobileMenuOpen: false, searchOpen: false, cartDrawerOpen: false };
+
 const uiSlice = createSlice({
   name: 'ui', initialState,
   reducers: {
-    toggleDarkMode(state) { state.darkMode = !state.darkMode; if (typeof window !== 'undefined') { localStorage.setItem('darkMode', String(state.darkMode)); document.documentElement.classList.toggle('dark', state.darkMode); } },
+    toggleDarkMode(state) {
+      state.darkMode = !state.darkMode;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('darkMode', String(state.darkMode));
+        document.documentElement.classList.toggle('dark', state.darkMode);
+      }
+    },
+    initializeDarkMode(state) {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('darkMode');
+        state.darkMode = stored ? stored === 'true' : true;
+        document.documentElement.classList.toggle('dark', state.darkMode);
+      }
+    },
     setMobileMenuOpen(state, action: PayloadAction<boolean>) { state.mobileMenuOpen = action.payload; },
     setSearchOpen(state, action: PayloadAction<boolean>) { state.searchOpen = action.payload; },
     setCartDrawerOpen(state, action: PayloadAction<boolean>) { state.cartDrawerOpen = action.payload; },
   },
 });
-export const { toggleDarkMode, setMobileMenuOpen, setSearchOpen, setCartDrawerOpen } = uiSlice.actions;
+
+export const { toggleDarkMode, initializeDarkMode, setMobileMenuOpen, setSearchOpen, setCartDrawerOpen } = uiSlice.actions;
 export default uiSlice.reducer;

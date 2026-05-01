@@ -1,414 +1,82 @@
 'use client';
 
-import { useState, useMemo, useCallback, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { LayoutGrid, List, SlidersHorizontal, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useGetProductsQuery, useGetCategoriesQuery } from '@/redux/api/apiSlice';
 import ProductCard from '@/components/product/ProductCard';
 import ProductCardSkeleton from '@/components/product/SkeletonCard';
 import FilterSidebar from '@/components/filters/FilterSidebar';
 import { SORT_OPTIONS } from '@/constants';
 import type { SortOption } from '@/types';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationEllipsis,
-} from '@/components/ui/pagination';
-
-const ITEMS_PER_PAGE = 12;
 
 function ProductsContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
-
   const categoryParam = searchParams.get('category') || '';
   const searchParam = searchParams.get('search') || '';
-
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [sortBy, setSortBy] = useState<SortOption>('relevance');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCategory, setSelectedCategory] = useState(categoryParam);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState(0);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 999999]);
+  const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [page, setPage] = useState(1);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
-
-  const { data: products, isLoading: productsLoading } = useGetProductsQuery({
-    category: categoryParam,
-    search: searchParam,
-    sortBy,
-    brand: selectedBrands.length > 0 ? selectedBrands : undefined,
-    minPrice: priceRange[0] > 0 ? priceRange[0] : undefined,
-    maxPrice: priceRange[1] < 999999 ? priceRange[1] : undefined,
-    minRating: selectedRating > 0 ? selectedRating : undefined,
-  });
+  const PER_PAGE = 12;
 
   const { data: categories } = useGetCategoriesQuery();
+  const { data: allProducts, isLoading } = useGetProductsQuery({ category: selectedCategory, search: searchParam, sortBy });
 
-  const totalProducts = products?.length ?? 0;
-  const totalPages = Math.ceil(totalProducts / ITEMS_PER_PAGE);
-  const paginatedProducts = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return products?.slice(start, start + ITEMS_PER_PAGE) ?? [];
-  }, [products, currentPage]);
-
-  // Handlers
-  const handleCategoryChange = useCallback(
-    (categoryId: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (categoryId) {
-        params.set('category', categoryId);
-      } else {
-        params.delete('category');
-      }
-      router.push(`/products?${params.toString()}`);
-      setCurrentPage(1);
-      setMobileFilterOpen(false);
-    },
-    [searchParams, router]
-  );
-
-  const handleBrandChange = useCallback((brand: string, checked: boolean) => {
-    setSelectedBrands((prev) =>
-      checked ? [...prev, brand] : prev.filter((b) => b !== brand)
-    );
-    setCurrentPage(1);
-  }, []);
-
-  const handleRatingChange = useCallback((rating: number) => {
-    setSelectedRating(rating);
-    setCurrentPage(1);
-  }, []);
-
-  const handlePriceRangeChange = useCallback((range: [number, number]) => {
-    setPriceRange(range);
-    setCurrentPage(1);
-  }, []);
-
-  const handleSortChange = useCallback((value: string) => {
-    setSortBy(value as SortOption);
-    setCurrentPage(1);
-  }, []);
-
-  const handleClearFilters = useCallback(() => {
-    setSelectedBrands([]);
-    setSelectedRating(0);
-    setPriceRange([0, 999999]);
-    const params = new URLSearchParams();
-    router.push(`/products?${params.toString()}`);
-    setCurrentPage(1);
-  }, [router]);
-
-  const removeFilterChip = useCallback(
-    (type: 'category' | 'brand' | 'rating' | 'price', value?: string) => {
-      switch (type) {
-        case 'category':
-          handleCategoryChange('');
-          break;
-        case 'brand':
-          if (value) handleBrandChange(value, false);
-          break;
-        case 'rating':
-          handleRatingChange(0);
-          break;
-        case 'price':
-          handlePriceRangeChange([0, 999999]);
-          break;
-      }
-    },
-    [handleCategoryChange, handleBrandChange, handleRatingChange, handlePriceRangeChange]
-  );
-
-  // Active filter chips
-  const activeFilters = useMemo(() => {
-    const chips: { type: 'category' | 'brand' | 'rating' | 'price'; label: string; value?: string }[] = [];
-
-    if (categoryParam) {
-      const cat = categories?.find((c) => c.slug === categoryParam);
-      chips.push({ type: 'category', label: cat ? cat.name : categoryParam });
-    }
-
-    selectedBrands.forEach((brand) => {
-      chips.push({ type: 'brand', label: brand, value: brand });
+  const filteredProducts = useMemo(() => {
+    if (!allProducts) return [];
+    return allProducts.filter(p => {
+      if (selectedBrands.length && !selectedBrands.includes(p.brand)) return false;
+      if (p.rating < selectedRating) return false;
+      if (p.selling_price < priceRange[0] || p.selling_price > priceRange[1]) return false;
+      return true;
     });
+  }, [allProducts, selectedBrands, selectedRating, priceRange]);
 
-    if (selectedRating > 0) {
-      chips.push({ type: 'rating', label: `${selectedRating}+ Stars` });
-    }
+  const paginatedProducts = useMemo(() => filteredProducts.slice((page - 1) * PER_PAGE, page * PER_PAGE), [filteredProducts, page]);
+  const totalPages = Math.ceil(filteredProducts.length / PER_PAGE);
 
-    if (priceRange[0] > 0 || priceRange[1] < 999999) {
-      chips.push({
-        type: 'price',
-        label: `Rs.${priceRange[0]} - Rs.${priceRange[1]}`,
-      });
-    }
+  const clearFilters = () => { setSelectedCategory(''); setSelectedBrands([]); setSelectedRating(0); setPriceRange([0, 999999]); setSortBy('relevance'); setPage(1); };
 
-    return chips;
-  }, [categoryParam, categories, selectedBrands, selectedRating, priceRange]);
-
-  // Pagination page numbers
-  const getPageNumbers = useCallback(() => {
-    const pages: (number | 'ellipsis')[] = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push('ellipsis');
-      for (
-        let i = Math.max(2, currentPage - 1);
-        i <= Math.min(totalPages - 1, currentPage + 1);
-        i++
-      ) {
-        pages.push(i);
-      }
-      if (currentPage < totalPages - 2) pages.push('ellipsis');
-      pages.push(totalPages);
-    }
-    return pages;
-  }, [totalPages, currentPage]);
-
-  const sidebarContent = (
-    <FilterSidebar
-      categories={categories || []}
-      products={products || []}
-      selectedCategory={categoryParam}
-      selectedBrands={selectedBrands}
-      selectedRating={selectedRating}
-      priceRange={priceRange}
-      onCategoryChange={handleCategoryChange}
-      onBrandChange={handleBrandChange}
-      onRatingChange={handleRatingChange}
-      onPriceRangeChange={handlePriceRangeChange}
-      onClear={handleClearFilters}
-    />
-  );
+  const filterContent = <FilterSidebar categories={categories || []} products={allProducts || []} selectedCategory={selectedCategory} selectedBrands={selectedBrands} selectedRating={selectedRating} priceRange={priceRange} onCategoryChange={c => { setSelectedCategory(c); setPage(1); }} onBrandChange={setSelectedBrands} onRatingChange={setSelectedRating} onPriceChange={setPriceRange} onClear={clearFilters} />;
 
   return (
     <div className="container mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">
-          {searchParam
-            ? `Search results for "${searchParam}"`
-            : categoryParam
-            ? categories?.find((c) => c.slug === categoryParam)?.name || 'Products'
-            : 'All Products'}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {totalProducts} product{totalProducts !== 1 ? 's' : ''} found
-        </p>
-      </div>
-
-      {/* Toolbar: Sort, View Toggle, Mobile Filter */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          {/* Mobile Filter Button */}
-          <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="lg:hidden">
-                <SlidersHorizontal className="mr-2 h-4 w-4" />
-                Filters
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-80 overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>Filters</SheetTitle>
-              </SheetHeader>
-              <div className="mt-4">{sidebarContent}</div>
-            </SheetContent>
-          </Sheet>
-
-          {/* Sort Dropdown */}
-          <Select value={sortBy} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* View Toggle */}
-        <div className="flex items-center gap-1 rounded-md border p-1">
-          <Button
-            variant={viewMode === 'grid' ? 'default' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setViewMode('grid')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === 'list' ? 'default' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setViewMode('list')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
+      <div className="flex items-center justify-between mb-6">
+        <div><h1 className="text-2xl font-bold">{searchParam ? `Results for "${searchParam}"` : selectedCategory ? categories?.find(c => c.slug === selectedCategory)?.name || 'Products' : 'All Products'}</h1><p className="text-sm text-muted-foreground mt-1">{filteredProducts.length} products found</p></div>
+        <div className="flex items-center gap-2">
+          <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}><SheetTrigger asChild><Button variant="outline" size="sm" className="md:hidden"><SlidersHorizontal className="h-4 w-4 mr-1" /> Filters</Button></SheetTrigger><SheetContent side="left" className="w-80"><SheetHeader><SheetTitle>Filters</SheetTitle></SheetHeader><div className="mt-4">{filterContent}</div></SheetContent></Sheet>
+          <Select value={sortBy} onValueChange={v => setSortBy(v as SortOption)}><SelectTrigger className="w-[180px] h-9 text-sm"><SelectValue placeholder="Sort by" /></SelectTrigger><SelectContent>{SORT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent></Select>
+          <div className="hidden sm:flex border rounded-md"><Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" className="h-9 w-9" onClick={() => setViewMode('grid')}><LayoutGrid className="h-4 w-4" /></Button><Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="icon" className="h-9 w-9" onClick={() => setViewMode('list')}><List className="h-4 w-4" /></Button></div>
         </div>
       </div>
-
-      {/* Active Filter Chips */}
-      {activeFilters.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Active filters:</span>
-          {activeFilters.map((filter, index) => (
-            <Badge
-              key={`${filter.type}-${filter.value ?? index}`}
-              variant="secondary"
-              className="gap-1 pr-1"
-            >
-              {filter.label}
-              <button
-                onClick={() => removeFilterChip(filter.type, filter.value)}
-                className="ml-1 rounded-full p-0.5 hover:bg-muted"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={handleClearFilters}
-          >
-            Clear all
-          </Button>
+      {(selectedCategory || selectedBrands.length || selectedRating || priceRange[0] > 0 || priceRange[1] < 999999) && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {selectedCategory && <span className="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs">{categories?.find(c => c.slug === selectedCategory)?.name}<X className="h-3 w-3 cursor-pointer" onClick={() => setSelectedCategory('')} /></span>}
+          {selectedBrands.map(b => <span key={b} className="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs">{b}<X className="h-3 w-3 cursor-pointer" onClick={() => setSelectedBrands(selectedBrands.filter(x => x !== b))} /></span>)}
+          {selectedRating > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs">{selectedRating}+ Stars<X className="h-3 w-3 cursor-pointer" onClick={() => setSelectedRating(0)} /></span>}
         </div>
       )}
-
-      {/* Main Content */}
-      <div className="flex gap-8">
-        {/* Desktop Sidebar */}
-        <div className="hidden w-64 flex-shrink-0 lg:block">
-          <div className="sticky top-24">{sidebarContent}</div>
-        </div>
-
-        {/* Product Grid */}
+      <div className="flex gap-6">
+        <aside className="hidden md:block w-64 flex-shrink-0"><div className="sticky top-24 rounded-lg border p-4 max-h-[calc(100vh-8rem)] overflow-y-auto">{filterContent}</div></aside>
         <div className="flex-1">
-          {productsLoading ? (
-            <div
-              className={
-                viewMode === 'grid'
-                  ? 'grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3'
-                  : 'flex flex-col gap-4'
-              }
-            >
-              {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
-                <ProductCardSkeleton key={i} />
-              ))}
+          {isLoading ? <div className={`grid gap-3 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>{Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)}</div>
+          : paginatedProducts.length ? <div className={`grid gap-3 ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : 'grid-cols-1'}`}>{paginatedProducts.map(p => <ProductCard key={p.id} product={p} viewMode={viewMode} />)}</div>
+          : <div className="flex flex-col items-center justify-center py-20 text-center"><p className="text-lg font-medium">No products found</p><p className="text-sm text-muted-foreground mt-1">Try adjusting your filters</p><Button variant="outline" className="mt-4" onClick={clearFilters}>Clear Filters</Button></div>}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+              {Array.from({ length: Math.min(totalPages, 5) }).map((_, i) => <Button key={i + 1} variant={page === i + 1 ? 'default' : 'outline'} size="sm" onClick={() => setPage(i + 1)}>{i + 1}</Button>)}
+              {totalPages > 5 && <span className="text-muted-foreground">...</span>}
+              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next</Button>
             </div>
-          ) : paginatedProducts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-lg font-medium text-muted-foreground">No products found</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Try adjusting your filters or search terms
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={handleClearFilters}
-              >
-                Clear all filters
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div
-                className={
-                  viewMode === 'grid'
-                    ? 'grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3'
-                    : 'flex flex-col gap-4'
-                }
-              >
-                {paginatedProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    viewMode={viewMode}
-                  />
-                ))}
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-8">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() =>
-                            setCurrentPage((prev) => Math.max(1, prev - 1))
-                          }
-                          className={
-                            currentPage === 1
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-
-                      {getPageNumbers().map((page, index) =>
-                        page === 'ellipsis' ? (
-                          <PaginationItem key={`ellipsis-${index}`}>
-                            <PaginationEllipsis />
-                          </PaginationItem>
-                        ) : (
-                          <PaginationItem key={page}>
-                            <PaginationLink
-                              isActive={currentPage === page}
-                              onClick={() => setCurrentPage(page)}
-                              className="cursor-pointer"
-                            >
-                              {page}
-                            </PaginationLink>
-                          </PaginationItem>
-                        )
-                      )}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() =>
-                            setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                          }
-                          className={
-                            currentPage === totalPages
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
-            </>
           )}
         </div>
       </div>
@@ -417,32 +85,5 @@ function ProductsContent() {
 }
 
 export default function ProductsPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="container mx-auto px-4 py-6">
-          <div className="mb-6">
-            <div className="h-8 w-64 animate-pulse rounded bg-muted" />
-            <div className="mt-2 h-4 w-32 animate-pulse rounded bg-muted" />
-          </div>
-          <div className="flex gap-8">
-            <div className="hidden w-64 lg:block">
-              <div className="space-y-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-20 animate-pulse rounded bg-muted" />
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <ProductCardSkeleton key={i} />
-              ))}
-            </div>
-          </div>
-        </div>
-      }
-    >
-      <ProductsContent />
-    </Suspense>
-  );
+  return <Suspense fallback={<div className="container mx-auto px-4 py-6"><div className="grid grid-cols-4 gap-3">{Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)}</div></div>}><ProductsContent /></Suspense>;
 }

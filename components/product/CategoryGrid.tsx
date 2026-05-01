@@ -1,66 +1,28 @@
 'use client';
 
-import Image from 'next/image';
+import { memo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import type { Category } from '@/types';
 
-interface CategoryGridProps {
-  categories: Category[];
-}
+interface Props { categories: Category[]; }
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { duration: 0.4, ease: 'easeOut' },
-  },
-};
-
-export default function CategoryGrid({ categories }: CategoryGridProps) {
-  const activeCategories = categories.filter((c) => c.is_active);
-
+function CategoryGrid({ categories }: Props) {
   return (
-    <motion.div
-      className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
-      variants={containerVariants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, margin: '-50px' }}
-    >
-      {activeCategories.map((category) => (
-        <motion.div key={category.id} variants={itemVariants}>
-          <Link
-            href={`/category/${category.slug}`}
-            className="group flex flex-col items-center gap-3 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/30"
-          >
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4">
+      {categories.map((cat, i) => (
+        <Link key={cat.id} href={`/products?category=${cat.slug}`}>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} whileHover={{ scale: 1.03 }} className="group relative flex flex-col items-center gap-3 rounded-xl border bg-card p-4 transition-shadow hover:shadow-md">
             <div className="relative h-20 w-20 overflow-hidden rounded-full bg-muted">
-              <Image
-                src={category.image_url}
-                alt={category.name}
-                fill
-                className="object-cover transition-transform duration-300 group-hover:scale-110"
-                sizes="80px"
-              />
+              <Image src={cat.image_url || 'https://images.pexels.com/photos/1092644/pexels-photo-1092644.jpeg'} alt={cat.name} fill className="object-cover transition-transform group-hover:scale-110" sizes="80px" />
             </div>
-            <span className="text-center text-sm font-medium text-foreground group-hover:text-primary">
-              {category.name}
-            </span>
-          </Link>
-        </motion.div>
+            <span className="text-sm font-medium text-center">{cat.name}</span>
+          </motion.div>
+        </Link>
       ))}
-    </motion.div>
+    </div>
   );
 }
+
+export default memo(CategoryGrid);
